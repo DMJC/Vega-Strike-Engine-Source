@@ -92,6 +92,9 @@ public:
         x = myDims.k;
     }
 
+    // x and y are the box's right and bottom edges in normalized coordinates, not
+    // its width and height: the box runs from SetPos(x, y) to SetSize(x, y). Python's
+    // Base.TextBox(..., x, y, (x2, y2, mult)) and the VDUs (x + w) pass edges.
     void SetSize(float x, float y) {
         myDims.i = x;
         myDims.j = y;

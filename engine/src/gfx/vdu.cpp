@@ -800,13 +800,15 @@ void VDU::DrawMessages(GameCockpit *parentcp, Unit *target) {
     // reached solely from the MSG case); the anchor (left edge) and height are kept,
     // and other VDU types / the nav computer are untouched.
     {
-        float cw = 0.0f, ch = 0.0f;
-        tp->GetSize(cw, ch);
-        // Full screen width == myDims.i = 2.0 (normToPixelW(2.0) == screen width).
+        float right = 0.0f, ch = 0.0f, top = 0.0f, left = 0.0f;
+        tp->GetSize(right, ch);
+        tp->GetPos(top, left);
+        // SetSize takes the box's right edge, so widen by moving that edge to
+        // left + 66% of the screen (the full screen is 2.0 wide in normalized units).
         const float full_screen_width = 2.0f;
         const float message_wrap_width = full_screen_width * 0.66f;
-        if (cw < message_wrap_width) {
-            tp->SetSize(message_wrap_width, ch);
+        if (right - left < message_wrap_width) {
+            tp->SetSize(left + message_wrap_width, ch);
         }
     }
 

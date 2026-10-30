@@ -107,8 +107,13 @@ std::vector<TextLine> TextPlane::ParseText(const std::string& text, ImU32 defaul
     std::string current_line;
     size_t lastWordSeparator = 0;
     size_t lastWordSeparatorInBuffer = 0;
+    // Lines wrap at the box's width. myDims.i is the box's right edge and myDims.k its
+    // left edge (see SetSize), so the width is their difference; measure it against
+    // the same resolution Draw() positions the text with (the base letterbox when set).
     // we need a slight margin as otherwise some texts won't fit
-    float widthInPixels = Coordinates::normToPixelW(myDims.i) * 1.05f;
+    const float boxWidth = myDims.i - myDims.k;
+    const float resX = (m_resW > 0.0f) ? m_resW : ImGui::GetIO().DisplaySize.x;
+    float widthInPixels = Coordinates::normToPixelW(boxWidth, resX) * 1.05f;
     if(widthInPixels < 0) {
         widthInPixels = INFINITY;
     }
