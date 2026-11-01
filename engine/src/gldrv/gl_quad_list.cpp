@@ -27,6 +27,11 @@
 
 
 #include "gl_globals.h"
+#include "gl_primitives.h"
+#include "gl_renderer.h"
+#include "gl_shader_translate.h"
+#include <cstddef>
+#include <vector>
 
 #include "src/gfxlib.h"
 #include "src/vegastrike.h"
@@ -49,19 +54,48 @@ GFXQuadList::~GFXQuadList() {
     }
 }
 
+template<typename V>
+static void SetQuadAttributes(size_t base, bool color) {
+    const GLsizei stride = sizeof(V);
+    auto attrib = [&](GLuint index, GLint size, size_t offset) {
+        (*glVertexAttribPointer_p)(index, size, GL_FLOAT, GL_FALSE, stride,
+                reinterpret_cast<const GLvoid *>(base + offset));
+        (*glEnableVertexAttribArray_p)(index);
+    };
+    // What glInterleavedArrays(GL_T2F_[C4F_]N3F_V3F) used to set up
+    attrib(vsgl::kAttribVertex, 3, offsetof(V, x));
+    attrib(vsgl::kAttribNormal, 3, offsetof(V, i));
+    attrib(vsgl::kAttribMultiTexCoord0, 2, offsetof(V, s));
+    if (color) {
+        attrib(vsgl::kAttribColor, 4, offsetof(GFXColorVertex, r));
+    } else {
+        (*glDisableVertexAttribArray_p)(vsgl::kAttribColor);
+    }
+    (*glDisableVertexAttribArray_p)(vsgl::kAttribMultiTexCoord0 + 1);
+    (*glDisableVertexAttribArray_p)(vsgl::kAttribMultiTexCoord0 + 2);
+}
+
 void GFXQuadList::Draw() {
     if (!numQuads) {
         return;
     }
+    vsgl::BindStreamVertexArray();
+    const size_t count = static_cast<size_t>(numQuads) * 4;
     if (isColor) {
-        glInterleavedArrays(GL_T2F_C4F_N3F_V3F, sizeof(GFXColorVertex), &data.colors[0]);
+        const size_t base = vsgl::StreamVertexData(&data.colors[0], count * sizeof(GFXColorVertex));
+        SetQuadAttributes<GFXColorVertex>(base, true);
     } else {
-        glInterleavedArrays(GL_T2F_N3F_V3F, sizeof(GFXVertex), &data.vertices[0]);
+        const size_t base = vsgl::StreamVertexData(&data.vertices[0], count * sizeof(GFXVertex));
+        SetQuadAttributes<GFXVertex>(base, false);
     }
-    glDrawArrays(GL_QUADS, 0, numQuads * 4);
-    if (isColor) {
-        GFXColor(1, 1, 1, 1);
-    }
+    std::vector<uint32_t> indices;
+    vsgl::AppendQuadIndices(0, static_cast<uint32_t>(count), indices);
+    const size_t index_base = vsgl::StreamIndexData(&indices[0], indices.size() * sizeof(uint32_t));
+    vsgl::PrepareDraw(vsgl::Primitive::Triangles, isColor != GFXFALSE);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT,
+            reinterpret_cast<const GLvoid *>(index_base));
+    ++gl_batches_this_frame;
+    gl_vertices_this_frame += static_cast<int>(count);
 }
 
 int GFXQuadList::AddQuad(const GFXVertex *vertices, const GFXColorVertex *color) {

@@ -35,7 +35,9 @@ class SDL_Window;
 extern bool gui_initialized;
 extern SDL_Window* current_window;
 
-void InitGui(SDL_Window *window, const SDL_GLContext *context, float fontSize, const char *fontFile = nullptr);
+// glslVersion is the "#version ..." line matching the GL context (e.g. "#version 410 core")
+void InitGui(SDL_Window *window, const SDL_GLContext *context, float fontSize, const char *fontFile = nullptr,
+        const char *glslVersion = "#version 410 core");
 void CleanupGui();
 
 /** Request that the ImGui font atlas be rebuilt at the given pixel size on the

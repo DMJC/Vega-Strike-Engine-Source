@@ -152,6 +152,8 @@ struct GFXStats
 #   define GL_MAX_CUBE_MAP_TEXTURE_SIZE_EXT 0x851C
 #endif
 
+#include "gl_core_functions.h"
+
 extern PFNGLBINDBUFFERARBPROC glBindBufferARB_p;
 extern PFNGLGENBUFFERSARBPROC glGenBuffersARB_p;
 extern PFNGLDELETEBUFFERSARBPROC glDeleteBuffersARB_p;

@@ -442,7 +442,6 @@ void NavigationSystem::DrawGalaxy() {
     float center_nav_y = ((screenskipby4[2] + screenskipby4[3]) / 2);
     //**********************************
 
-    glEnable(GL_ALPHA);
     GFXDisable(LIGHTING);
     GFXBlendMode(SRCALPHA, INVSRCALPHA);
     if (!camera_z) {

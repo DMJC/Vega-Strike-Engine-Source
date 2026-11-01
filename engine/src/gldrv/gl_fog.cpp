@@ -28,6 +28,7 @@
 
 #include "src/gfxlib.h"
 #include "gl_globals.h"
+#include "gl_ffp_compat.h"
 static struct _GFXFogState {
     bool enabled;
     FOGMODE curmode;
@@ -54,22 +55,22 @@ void GFXFogMode(const FOGMODE fog) {
                 if (!GFXFogState.enabled) {
                     return;
                 }
-                glDisable(GL_FOG);
+                vsglDisable(GL_FOG);
                 GFXFogState.enabled = false;
                 return;
             case FOG_EXP:
-                glFogi(GL_FOG_MODE, GL_EXP);
+                vsglFogi(GL_FOG_MODE, GL_EXP);
                 break;
             case FOG_EXP2:
-                glFogi(GL_FOG_MODE, GL_EXP2);
+                vsglFogi(GL_FOG_MODE, GL_EXP2);
                 break;
             case FOG_LINEAR:
-                glFogi(GL_FOG_MODE, GL_LINEAR);
+                vsglFogi(GL_FOG_MODE, GL_LINEAR);
                 break;
         }
     }
     if (!GFXFogState.enabled) {
-        glEnable(GL_FOG);
+        vsglEnable(GL_FOG);
     }
     GFXFogState.curmode = fog;
     GFXFogState.enabled = true;
@@ -78,7 +79,7 @@ void GFXFogMode(const FOGMODE fog) {
 
 void GFXFogDensity(const float fogdensity) {
     if (fogdensity != GFXFogState.density) {
-        glFogf(GL_FOG_DENSITY, fogdensity);
+        vsglFogf(GL_FOG_DENSITY, fogdensity);
         GFXFogState.density = fogdensity;
     }
 }
@@ -87,21 +88,21 @@ void GFXFogLimits(const float fognear, const float fogfar) {
     if (GFXFogState.nnear != fognear || GFXFogState.ffar != fogfar) {
         GFXFogState.nnear = fognear;
         GFXFogState.ffar = fogfar;
-        glFogf(GL_FOG_START, fognear);
-        glFogf(GL_FOG_END, fogfar);
+        vsglFogf(GL_FOG_START, fognear);
+        vsglFogf(GL_FOG_END, fogfar);
     }
 }
 
 void GFXFogColor(GFXColor c) {
     if (c.r != GFXFogState.c.r || c.g != GFXFogState.c.g || c.b != GFXFogState.c.b || c.a != GFXFogState.c.a) {
-        glFogfv(GL_FOG_COLOR, &c.r);
+        vsglFogfv(GL_FOG_COLOR, &c.r);
         GFXFogState.c = c;
     }
 }
 
 void GFXFogIndex(const int index) {
     if (GFXFogState.index != index) {
-        glFogi(GL_FOG_INDEX, index);
+        vsglFogi(GL_FOG_INDEX, index);
         GFXFogState.index = index;
     }
 }

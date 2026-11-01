@@ -27,6 +27,7 @@
 
 
 #include <assert.h>
+#include <set>
 #include <string>
 
 #define GL_INIT_CPP
@@ -83,6 +84,8 @@
 
 #include <stdio.h>
 #include "gl_init.h"
+#include "gl_ffp_compat.h"
+#include "gl_renderer.h"
 
 #include "configuration/configuration.h"
 #define WINDOW_TITLE "Vega Strike " VERSION
@@ -145,6 +148,11 @@ PFNGLUNIFORM4IVPROC glUniform4iv_p = nullptr;
 PFNGLDELETESHADERPROC glDeleteShader_p = nullptr;
 PFNGLDELETEPROGRAMPROC glDeleteProgram_p = nullptr;
 
+#define VSGL_DEFINE_FUNCTION(ret, name, params) vsgl_pfn_##name gl##name##_p = nullptr;
+VSGL_CORE_FUNCTIONS(VSGL_DEFINE_FUNCTION)
+VSGL_OPTIONAL_FUNCTIONS(VSGL_DEFINE_FUNCTION)
+#undef VSGL_DEFINE_FUNCTION
+
 typedef void ( *(*get_gl_proc_fptr_t)(const GLubyte *))();
 #ifdef _WIN32
     typedef char * GET_GL_PTR_TYP;
@@ -169,43 +177,45 @@ typedef void ( *(*get_gl_proc_fptr_t)(const GLubyte *))();
 CG_Cloak *cloak_cg = new CG_Cloak();
 #endif
 
+bool vsglLoadCoreFunctions(const char **missing) {
+#define VSGL_LOAD_FUNCTION(ret, name, params) \
+    gl##name##_p = reinterpret_cast<vsgl_pfn_##name>(GET_GL_PROC((GET_GL_PTR_TYP) "gl" #name)); \
+    if (gl##name##_p == nullptr) { \
+        if (missing != nullptr) { \
+            *missing = "gl" #name; \
+        } \
+        return false; \
+    }
+    VSGL_CORE_FUNCTIONS(VSGL_LOAD_FUNCTION)
+#undef VSGL_LOAD_FUNCTION
+    return true;
+}
+
+void vsglLoadOptionalFunctions() {
+#define VSGL_LOAD_FUNCTION(ret, name, params) \
+    gl##name##_p = reinterpret_cast<vsgl_pfn_##name>(GET_GL_PROC((GET_GL_PTR_TYP) "gl" #name));
+    VSGL_OPTIONAL_FUNCTIONS(VSGL_LOAD_FUNCTION)
+#undef VSGL_LOAD_FUNCTION
+}
+
 /* CENTRY */
 int vsExtensionSupported(const char *extension) {
-    static const GLubyte *extensions = nullptr;
-    const GLubyte *start;
-    GLubyte *where, *terminator;
-
-    /* Extension names should not have spaces. */
-    where = (GLubyte *) strchr(extension, ' ');
-    if (where || *extension == '\0') {
-        return 0;
-    }
-    if (!extensions) {
-        extensions = glGetString(GL_EXTENSIONS);
-    }
-    /* It takes a bit of care to be fool-proof about parsing the
-     *  OpenGL extensions string.  Don't be fooled by sub-strings,
-     *  etc. */
-    start = extensions;
-    for (;;) {
-        /* If your application crashes in the strstr routine below,
-         *  you are probably calling vsExtensionSupported without
-         *  having a current window.  Calling glGetString without
-         *  a current OpenGL context has unpredictable results.
-         *  Please fix your program. */
-        where = (GLubyte *) strstr((const char *) start, extension);
-        if (!where) {
-            break;
-        }
-        terminator = where + strlen(extension);
-        if (where == start || *(where - 1) == ' ') {
-            if (*terminator == ' ' || *terminator == '\0') {
-                return 1;
+    // Core profiles only list extensions one by one (GL_EXTENSIONS through
+    // glGetString is an error there).
+    static std::set<std::string> extensions;
+    static bool queried = false;
+    if (!queried && glGetStringi_p != nullptr) {
+        queried = true;
+        GLint count = 0;
+        glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+        for (GLint i = 0; i < count; ++i) {
+            const GLubyte *name = (*glGetStringi_p)(GL_EXTENSIONS, static_cast<GLuint>(i));
+            if (name != nullptr) {
+                extensions.insert(reinterpret_cast<const char *>(name));
             }
         }
-        start = terminator;
     }
-    return 0;
+    return extensions.count(extension) != 0 ? 1 : 0;
 }
 
 bool vsVendorMatch(const char *vendor) {
@@ -247,298 +257,115 @@ bool vsVendorMatch(const char *vendor) {
 }
 
 void init_opengl_extensions() {
-    const unsigned char *extensions = glGetString(GL_EXTENSIONS);
+    GLint num_extensions = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
+    VS_LOG(trace, (boost::format("OpenGL extensions supported: %1%") % num_extensions));
 
-    VS_LOG(trace, (boost::format("OpenGL Extensions supported: %1%") % extensions));
+    // Fixed-function era extensions (compiled vertex arrays, paletted
+    // textures, client-side multitexture) do not exist on a core profile.
+    glLockArraysEXT_p = nullptr;
+    glUnlockArraysEXT_p = nullptr;
+    glColorTable_p = nullptr;
+    glMultiTexCoord2fARB_p = nullptr;
+    glMultiTexCoord4fARB_p = nullptr;
+    glClientActiveTextureARB_p = nullptr;
 
-#ifndef NO_COMPILEDVERTEXARRAY_SUPPORT
-    if (vsExtensionSupported("GL_EXT_compiled_vertex_array")
-            && configuration().graphics.lock_vertex_arrays) {
-#if defined(__APPLE__) && defined (__MACH__)
-#ifndef __APPLE_PANTHER_GCC33_CLI__
-#if defined (glLockArraysEXT) && defined (glUnlockArraysEXT)
-        glLockArraysEXT_p   = &glLockArraysEXT;
-        glUnlockArraysEXT_p = &glUnlockArraysEXT;
-#else
-        glLockArraysEXT_p   = nullptr;
-        glUnlockArraysEXT_p = nullptr;
-#endif
-#else
-        glLockArraysEXT_p = (PFNGLLOCKARRAYSEXTPROC)(dlsym(RTLD_SELF, "glLockArraysEXT"));
-        glUnlockArraysEXT_p = (PFNGLUNLOCKARRAYSEXTPROC)(dlsym(RTLD_SELF, "glUnlockArraysEXT"));
-#endif /*__APPLE_PANTHER_GCC33_CLI__*/
-#else
-        glLockArraysEXT_p = (PFNGLLOCKARRAYSEXTPROC)
-                GET_GL_PROC((GET_GL_PTR_TYP) "glLockArraysEXT");
-        glUnlockArraysEXT_p = (PFNGLUNLOCKARRAYSEXTPROC)
-                GET_GL_PROC((GET_GL_PTR_TYP) "glUnlockArraysEXT");
-#endif
-        VS_LOG(trace, "OpenGL::GL_EXT_compiled_vertex_array supported");
-    } else {
-#if defined(__APPLE__) && defined (__MACH__)
-        glLockArraysEXT_p = nullptr;
-        glUnlockArraysEXT_p = nullptr;
-#endif
-        VS_LOG(debug, "OpenGL::GL_EXT_compiled_vertex_array unsupported");
-    }
-#endif
-#if defined(__APPLE__) && defined (__MACH__)
-    if (vsExtensionSupported("GL_EXT_multi_draw_arrays")) {
-        glMultiDrawArrays_p = (PFNGLMULTIDRAWARRAYSEXTPROC)
-                GET_GL_PROC((GET_GL_PTR_TYP) "glMultiDrawArraysEXT");
-        glMultiDrawElements_p = (PFNGLMULTIDRAWELEMENTSEXTPROC)
-                GET_GL_PROC((GET_GL_PTR_TYP) "glMultiDrawElementsEXT");
-        VS_LOG(trace, "OpenGL::GL_EXT_multi_draw_arrays supported");
-    } else {
-        glMultiDrawArrays_p = nullptr;
-        glMultiDrawElements_p = nullptr;
-        VS_LOG(debug, "OpenGL::GL_EXT_multi_draw_arrays unsupported");
-    }
-#else
-    if (vsExtensionSupported("GL_EXT_multi_draw_arrays")) {
-        glMultiDrawArrays_p = (PFNGLMULTIDRAWARRAYSEXTPROC)
-                GET_GL_PROC((GET_GL_PTR_TYP) "glMultiDrawArraysEXT");
-        glMultiDrawElements_p = (PFNGLMULTIDRAWELEMENTSEXTPROC)
-                GET_GL_PROC((GET_GL_PTR_TYP) "glMultiDrawElementsEXT");
-        VS_LOG(trace, "OpenGL::GL_EXT_multi_draw_arrays supported");
-    } else {
-        glMultiDrawArrays_p = nullptr;
-        glMultiDrawElements_p = nullptr;
-        VS_LOG(debug, "OpenGL::GL_EXT_multi_draw_arrays unsupported");
-    }
-#endif
-
-#ifndef NO_VBO_SUPPORT
+    // Everything below is core since GL 2.0 - 3.0; load the core entry points.
+    glMultiDrawArrays_p = (PFNGLMULTIDRAWARRAYSEXTPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glMultiDrawArrays");
+    glMultiDrawElements_p = (PFNGLMULTIDRAWELEMENTSEXTPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glMultiDrawElements");
     glBindBufferARB_p = (PFNGLBINDBUFFERARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glBindBuffer");
     glGenBuffersARB_p = (PFNGLGENBUFFERSPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGenBuffers");
     glDeleteBuffersARB_p = (PFNGLDELETEBUFFERSARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glDeleteBuffers");
     glBufferDataARB_p = (PFNGLBUFFERDATAARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glBufferData");
     glMapBufferARB_p = (PFNGLMAPBUFFERARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glMapBuffer");
     glUnmapBufferARB_p = (PFNGLUNMAPBUFFERARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUnmapBuffer");
-#endif
+    glActiveTextureARB_p = (PFNGLCLIENTACTIVETEXTUREARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glActiveTexture");
+    glCompressedTexImage2D_p =
+            (PFNGLCOMPRESSEDTEXIMAGE2DPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCompressedTexImage2D");
+    glGetShaderiv_p = (PFNGLGETSHADERIVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetShaderiv");
+    glGetProgramiv_p = (PFNGLGETPROGRAMIVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetProgramiv");
+    glGetShaderInfoLog_p = (PFNGLGETSHADERINFOLOGPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetShaderInfoLog");
+    glGetProgramInfoLog_p = (PFNGLGETPROGRAMINFOLOGPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetProgramInfoLog");
+    glCreateShader_p = (PFNGLCREATESHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCreateShader");
+    glCreateProgram_p = (PFNGLCREATEPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCreateProgram");
+    glShaderSource_p = (PFNGLSHADERSOURCEPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glShaderSource");
+    glCompileShader_p = (PFNGLCOMPILESHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCompileShader");
+    glAttachShader_p = (PFNGLATTACHSHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glAttachShader");
+    glLinkProgram_p = (PFNGLLINKPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glLinkProgram");
+    glUseProgram_p = (PFNGLUSEPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUseProgram");
+    glGetUniformLocation_p = (PFNGLGETUNIFORMLOCATIONPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetUniformLocation");
+    glUniform1f_p = (PFNGLUNIFORM1FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1f");
+    glUniform2f_p = (PFNGLUNIFORM2FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2f");
+    glUniform3f_p = (PFNGLUNIFORM3FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3f");
+    glUniform4f_p = (PFNGLUNIFORM4FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4f");
+    glUniform1i_p = (PFNGLUNIFORM1IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1i");
+    glUniform2i_p = (PFNGLUNIFORM2IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2i");
+    glUniform3i_p = (PFNGLUNIFORM3IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3i");
+    glUniform4i_p = (PFNGLUNIFORM4IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4i");
+    glUniform1fv_p = (PFNGLUNIFORM1FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1fv");
+    glUniform2fv_p = (PFNGLUNIFORM2FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2fv");
+    glUniform3fv_p = (PFNGLUNIFORM3FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3fv");
+    glUniform4fv_p = (PFNGLUNIFORM4FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4fv");
+    glUniform1iv_p = (PFNGLUNIFORM1IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1iv");
+    glUniform2iv_p = (PFNGLUNIFORM2IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2iv");
+    glUniform3iv_p = (PFNGLUNIFORM3IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3iv");
+    glUniform4iv_p = (PFNGLUNIFORM4IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4iv");
+    glDeleteShader_p = (PFNGLDELETESHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glDeleteShader");
+    glDeleteProgram_p = (PFNGLDELETEPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glDeleteProgram");
 
-    glColorTable_p = (PFNGLCOLORTABLEEXTPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glColorTableEXT");
-    glMultiTexCoord2fARB_p = (PFNGLMULTITEXCOORD2FARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glMultiTexCoord2fARB");
-    glMultiTexCoord4fARB_p = (PFNGLMULTITEXCOORD4FARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glMultiTexCoord4fARB");
-    glClientActiveTextureARB_p =
-            (PFNGLCLIENTACTIVETEXTUREARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glClientActiveTextureARB");
-    glActiveTextureARB_p = (PFNGLCLIENTACTIVETEXTUREARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glActiveTextureARB");
-    if (!glMultiTexCoord2fARB_p) {
-        glMultiTexCoord2fARB_p = (PFNGLMULTITEXCOORD2FARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glMultiTexCoord2fEXT");
+    switch (configuration().graphics.fog_detail) {
+        case 0:
+            vsglFogi(GL_FOG_DISTANCE_MODE_NV, GL_EYE_PLANE_ABSOLUTE_NV);
+            break;
+        case 1:
+            vsglFogi(GL_FOG_DISTANCE_MODE_NV, GL_EYE_PLANE);
+            break;
+        case 2:
+            vsglFogi(GL_FOG_DISTANCE_MODE_NV, GL_EYE_RADIAL_NV);
+            break;
     }
-    if (!glMultiTexCoord4fARB_p) {
-        glMultiTexCoord4fARB_p = (PFNGLMULTITEXCOORD4FARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glMultiTexCoord4fEXT");
-    }
-    if (!glClientActiveTextureARB_p) {
-        glClientActiveTextureARB_p =
-                (PFNGLCLIENTACTIVETEXTUREARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glClientActiveTextureEXT");
-    }
-    if (!glActiveTextureARB_p) {
-        glActiveTextureARB_p = (PFNGLCLIENTACTIVETEXTUREARBPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glActiveTextureEXT");
-    }
-    if (!glCompressedTexImage2D_p) {
-        glCompressedTexImage2D_p =
-                (PFNGLCOMPRESSEDTEXIMAGE2DPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCompressedTexImage2D");
-    }
-    if (!glGetShaderiv_p) {
-        glGetShaderiv_p = (PFNGLGETSHADERIVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetShaderiv");
-    }
-    if (!glGetProgramiv_p) {
-        glGetProgramiv_p = (PFNGLGETPROGRAMIVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetProgramiv");
-    }
-    if (!glGetShaderInfoLog_p) {
-        glGetShaderInfoLog_p = (PFNGLGETSHADERINFOLOGPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetShaderInfoLog");
-    }
-    if (!glGetProgramInfoLog_p) {
-        glGetProgramInfoLog_p = (PFNGLGETPROGRAMINFOLOGPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetProgramInfoLog");
-    }
-    if (!glCreateShader_p) {
-        glCreateShader_p = (PFNGLCREATESHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCreateShader");
-    }
-    if (!glCreateProgram_p) {
-        glCreateProgram_p = (PFNGLCREATEPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCreateProgram");
-    }
-    if (!glShaderSource_p) {
-        glShaderSource_p = (PFNGLSHADERSOURCEPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glShaderSource");
-    }
-    if (!glCompileShader_p) {
-        glCompileShader_p = (PFNGLCOMPILESHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glCompileShader");
-    }
-    if (!glAttachShader_p) {
-        glAttachShader_p = (PFNGLATTACHSHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glAttachShader");
-    }
-    if (!glLinkProgram_p) {
-        glLinkProgram_p = (PFNGLLINKPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glLinkProgram");
-    }
-    if (!glUseProgram_p) {
-        glUseProgram_p = (PFNGLUSEPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUseProgram");
-    }
-    if (!glGetUniformLocation_p) {
-        glGetUniformLocation_p = (PFNGLGETUNIFORMLOCATIONPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glGetUniformLocation");
-    }
-    if (!glUniform1f_p) {
-        glUniform1f_p = (PFNGLUNIFORM1FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1f");
-    }
-    if (!glUniform2f_p) {
-        glUniform2f_p = (PFNGLUNIFORM2FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2f");
-    }
-    if (!glUniform3f_p) {
-        glUniform3f_p = (PFNGLUNIFORM3FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3f");
-    }
-    if (!glUniform4f_p) {
-        glUniform4f_p = (PFNGLUNIFORM4FPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4f");
-    }
-    if (!glUniform1i_p) {
-        glUniform1i_p = (PFNGLUNIFORM1IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1i");
-    }
-    if (!glUniform2i_p) {
-        glUniform2i_p = (PFNGLUNIFORM2IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2i");
-    }
-    if (!glUniform3i_p) {
-        glUniform3i_p = (PFNGLUNIFORM3IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3i");
-    }
-    if (!glUniform4i_p) {
-        glUniform4i_p = (PFNGLUNIFORM4IPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4i");
-    }
-    if (!glUniform1fv_p) {
-        glUniform1fv_p = (PFNGLUNIFORM1FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1fv");
-    }
-    if (!glUniform2fv_p) {
-        glUniform2fv_p = (PFNGLUNIFORM2FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2fv");
-    }
-    if (!glUniform3fv_p) {
-        glUniform3fv_p = (PFNGLUNIFORM3FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3fv");
-    }
-    if (!glUniform4fv_p) {
-        glUniform4fv_p = (PFNGLUNIFORM4FVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4fv");
-    }
-    if (!glUniform1iv_p) {
-        glUniform1iv_p = (PFNGLUNIFORM1IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform1iv");
-    }
-    if (!glUniform2iv_p) {
-        glUniform2iv_p = (PFNGLUNIFORM2IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform2iv");
-    }
-    if (!glUniform3iv_p) {
-        glUniform3iv_p = (PFNGLUNIFORM3IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform3iv");
-    }
-    if (!glUniform4iv_p) {
-        glUniform4iv_p = (PFNGLUNIFORM4IVPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glUniform4iv");
-    }
-    if (!glDeleteShader_p) {
-        glDeleteShader_p = (PFNGLDELETESHADERPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glDeleteShader");
-    }
-    if (!glDeleteProgram_p) {
-        glDeleteProgram_p = (PFNGLDELETEPROGRAMPROC) GET_GL_PROC((GET_GL_PTR_TYP) "glDeleteProgram");
-    }
-    //fixme
-
-#ifdef GL_FOG_DISTANCE_MODE_NV
-    if (vsExtensionSupported("GL_NV_fog_distance")) {
-        VS_LOG(trace, "OpenGL::Accurate Fog Distance supported");
-        switch (configuration().graphics.fog_detail) {
-            case 0:
-                glFogi(GL_FOG_DISTANCE_MODE_NV, GL_EYE_PLANE_ABSOLUTE_NV);
-                break;
-            case 1:
-                glFogi(GL_FOG_DISTANCE_MODE_NV, GL_EYE_PLANE);
-                break;
-            case 2:
-                glFogi(GL_FOG_DISTANCE_MODE_NV, GL_EYE_RADIAL_NV);
-                break;
-        }
-    } else {
-#endif
-        VS_LOG(debug, "OpenGL::Accurate Fog Distance unsupported");
-#ifdef GL_FOG_DISTANCE_MODE_NV
-    }
-#endif
-    if (vsExtensionSupported("GL_ARB_texture_compression")) {
-        VS_LOG(trace, "OpenGL::Generic Texture Compression supported");
-    } else {
-        VS_LOG(info, "OpenGL::Generic Texture Compression unsupported");
-        gl_options.compression = 0;
-    }
+    // Generic texture compression is core; S3TC is still an extension.
     if (vsExtensionSupported("GL_EXT_texture_compression_s3tc")) {
         VS_LOG(trace, "OpenGL::S3TC Texture Compression supported");
-        //should be true;
     } else {
         (configuration()).graphics.s3tc = false;
         VS_LOG(info, "OpenGL::S3TC Texture Compression unsupported");
     }
-    if ((glMultiTexCoord2fARB_p && glMultiTexCoord4fARB_p && glClientActiveTextureARB_p && glActiveTextureARB_p)
-            && (vsExtensionSupported("GL_ARB_multitexture") || vsExtensionSupported("GL_EXT_multitexture"))) {
-        GLint multitex = gl_options.Multitexture;
-        glGetIntegerv(GL_MAX_TEXTURE_UNITS, &multitex);
-        if (multitex > 1) {
-            gl_options.Multitexture = multitex;
+    {
+        // gl_options.Multitexture holds the configured reflection setting until
+        // here; a nonzero value enables multitexturing with every image unit.
+        GLint units = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &units);
+        if (gl_options.Multitexture && units > 1) {
+            gl_options.Multitexture = units;
+            VS_LOG(trace, (boost::format("OpenGL::Multitexture supported (%1% units)") % gl_options.Multitexture));
         } else {
             gl_options.Multitexture = 0;
         }
-        //gl_options.Multitexture = 1*gl_options.Multitexture;//might be zero by input
-        if (gl_options.Multitexture) {
-            VS_LOG(trace, (boost::format("OpenGL::Multitexture supported (%1% units)") % gl_options.Multitexture));
-        }
-    } else {
-        gl_options.Multitexture = 0;
-        VS_LOG(debug, "OpenGL::Multitexture unsupported");
     }
-    if (vsExtensionSupported("GL_ARB_texture_cube_map") || vsExtensionSupported("GL_EXT_texture_cube_map")) {
-        gl_options.cubemap = 1;
-        VS_LOG(trace, "OpenGL::TextureCubeMapExt supported");
-    } else {
-        gl_options.cubemap = 0;
-        VS_LOG(info, "OpenGL::TextureCubeMapExt unsupported");
-    }
-    if (vsExtensionSupported("GL_EXT_texture_edge_clamp") || vsExtensionSupported("GL_SGIS_texture_edge_clamp")) {
-        VS_LOG(trace, "OpenGL::S3TC Texture Clamp-to-Edge supported");
-        // should be true
-    } else {
-        (configuration()).graphics.ext_clamp_to_edge = false;
-        VS_LOG(info, "OpenGL::S3TC Texture Clamp-to-Edge unsupported");
-    }
-    if (vsExtensionSupported("GL_ARB_texture_border_clamp") || vsExtensionSupported("GL_SGIS_texture_border_clamp")) {
-        VS_LOG(trace, "OpenGL::S3TC Texture Clamp-to-Border supported");
-        // should be true
-    } else {
-        (configuration()).graphics.ext_clamp_to_border = false;
-        VS_LOG(info, "OpenGL::S3TC Texture Clamp-to-Border unsupported");
-    }
-    if (vsExtensionSupported("GL_ARB_framebuffer_sRGB") || vsExtensionSupported("GL_EXT_framebuffer_sRGB")) {
-        VS_LOG(trace, "OpenGL::sRGB Framebuffer supported");
-        GLboolean srgbCapable = true;
-
-        if (vsExtensionSupported("GL_EXT_framebuffer_sRGB")) {
-            // TODO: GL_EXT_framebuffer_sRGB allows us to query sRGB capability easily.
-            // The ARB variant requires us to use GLX and GLW stuff, which would be harder to do portably
-            // For now, we'll just assume the ARB variant supports it, since it's quite probable that it
-            // does for most framebuffer visuals.
-            srgbCapable = false;
-            glGetBooleanv(GL_FRAMEBUFFER_SRGB_CAPABLE_EXT, &srgbCapable);
-        }
-
-        if (srgbCapable) {
+    // Cube maps, edge/border clamping and sRGB framebuffers are core.
+    gl_options.cubemap = 1;
+    {
+        // Ask the default framebuffer whether its back buffer is sRGB-capable
+        GLint encoding = 0;
+        (*glGetFramebufferAttachmentParameteriv_p)(GL_FRAMEBUFFER, GL_BACK_LEFT,
+                GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING, &encoding);
+        if (glGetError() == GL_NO_ERROR && encoding == GL_SRGB) {
             gl_options.ext_srgb_framebuffer = true;
+            VS_LOG(trace, "OpenGL::sRGB Framebuffer supported");
         } else {
-            VS_LOG(info, "OpenGL::sRGB Framebuffer unsupported by visual");
             gl_options.ext_srgb_framebuffer = false;
+            VS_LOG(info, "OpenGL::sRGB Framebuffer unsupported by visual");
         }
-    } else {
-        gl_options.ext_srgb_framebuffer = false;
-        VS_LOG(info, "OpenGL::sRGB Framebuffer unsupported");
     }
-    if (vsExtensionSupported("GL_NV_fragment_program2")) {
-        gl_options.nv_fp2 = true;
-        VS_LOG(trace, "OpenGL::NV_fragment_program2 supported");
-    } else {
-        gl_options.nv_fp2 = false;
-        VS_LOG(info, "OpenGL::NV_fragment_program2 unsupported");
-    }
+    // Explicit-LOD texture lookups (what NV_fragment_program2 used to signal)
+    // are part of every core GLSL version.
+    gl_options.nv_fp2 = true;
     if (GFXDefaultShaderSupported()) {
         if (gl_options.Multitexture < 16) {
             gl_options.Multitexture = 16;
         }
     }
-    //only support shaders on ps_2_0 cards
 
     // some useful generic limits
     GLint max_vertices = -1, max_indices = -1;
@@ -624,6 +451,13 @@ void GFXInit(int argc, char **argv) {
     char vsicon[9] = "vega.ico";
     winsys_init(&argc, argv, &vsname[0], &vsicon[0]);
 
+    const char *missing = nullptr;
+    if (!vsglLoadCoreFunctions(&missing)) {
+        VS_LOG_FLUSH_EXIT(fatal, (boost::format("The OpenGL driver lacks %1%, which %2% requires")
+                % missing % winsys_gl_profile().Name()), 1);
+    }
+    vsglLoadOptionalFunctions();
+
     glViewport(0, 0, native_resolution_x, native_resolution_y);
     
     static GFXColor clearcol = vs_config->getColor("space_background");;
@@ -679,52 +513,41 @@ void GFXInit(int argc, char **argv) {
     glClearColor(clearcol.r, clearcol.g, clearcol.b, clearcol.a);
     winsys_set_reshape_func(Reshape);
     initfov();
-    glShadeModel(GL_SMOOTH);
+    vsglShadeModel(GL_SMOOTH);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
-    glShadeModel(GL_SMOOTH);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     if (gl_options.wireframe) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     }
     if (gl_options.smooth_shade == 0) {
-        glShadeModel(GL_FLAT);
+        vsglShadeModel(GL_FLAT);
     }
-    glEnable(GL_ALPHA_TEST);
-    glAlphaFunc(GL_GREATER, 0.0);
+    vsglEnable(GL_ALPHA_TEST);
+    vsglAlphaFunc(GL_GREATER, 0.0);
 
     init_opengl_extensions();
+    if (!vsgl::InitRenderer(winsys_gl_profile())) {
+        VS_LOG_FLUSH_EXIT(fatal, "Could not build the fixed-function emulation program", 1);
+    }
     GFXInitTextureManager();
     if (gl_options.Multitexture) {
         GFXActiveTexture(0);
     }
-    glEnable(GL_TEXTURE_2D);          //use two-dimensional texturing
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    vsglEnable(GL_TEXTURE_2D);          //use two-dimensional texturing
 
-    if (vsExtensionSupported("GL_EXT_color_table") || vsExtensionSupported("GL_EXT_shared_texture_palette")) {
-        gl_options.PaletteExt = 1;
-        VS_LOG(trace, "OpenGL::EXTColorTable supported");
-    } else {
-        gl_options.PaletteExt = 0;
-        VS_LOG(debug, "OpenGL::EXTColorTable unsupported");
-    }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    // Paletted textures are expanded to RGBA on upload
+    gl_options.PaletteExt = 0;
+    vsglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
     if (gl_options.Multitexture) {
         for (int i = 1; i < 4; ++i) {
             GFXActiveTexture(i);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
             GFXTextureEnv(i, GFXADDTEXTURE);
-            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
             // Choose cubemap or spheremap coordinates.
             if (i == 1) {
 #ifdef NV_CUBE_MAP
@@ -741,23 +564,21 @@ void GFXInit(int argc, char **argv) {
     GFXActiveTexture(0);
     glClearDepth(1);
     glEnable(GL_BLEND);
-    glDisable(GL_ALPHA_TEST);
+    vsglDisable(GL_ALPHA_TEST);
     GFXBlendMode(ONE, ZERO);
 
-    glColor3f(0, 0, 0);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    glMatrixMode(GL_TEXTURE);
-    glLoadIdentity();     //set all matricies to identity
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
+    vsglColor3f(0, 0, 0);
+    vsglMatrixMode(GL_MODELVIEW);
+    vsglLoadIdentity();
+    vsglMatrixMode(GL_TEXTURE);
+    vsglLoadIdentity();     //set all matricies to identity
+    vsglMatrixMode(GL_PROJECTION);
+    vsglLoadIdentity();
 
-    glEnable(GL_LIGHTING);
-
-    glDisable(GL_NORMALIZE);
+    vsglEnable(GL_LIGHTING);
 
     glDisable(GL_LINE_SMOOTH);
-    glDisable(GL_POINT_SMOOTH);
+    vsglDisable(GL_POINT_SMOOTH);
 
     int con;
     GFXCreateLightContext(con);
@@ -790,6 +611,7 @@ void GFXLoop(void main_loop()) {
 void GFXShutdown() {
     extern void GFXDestroyAllLights();
 
+    vsgl::ShutdownRenderer();
     GFXDestroyAllTextures();
     GFXDestroyAllLights();
     if (configuration().graphics.full_screen) {

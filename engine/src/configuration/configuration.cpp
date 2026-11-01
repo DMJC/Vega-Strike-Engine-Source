@@ -4995,6 +4995,11 @@ void vega_config::Configuration::load_config(const std::string& json_text) {
                 graphics.gl_accelerated_visual = boost::json::value_to<bool>(*gl_accelerated_visual_value_ptr);
             }
 
+            const boost::json::value * gl_profile_value_ptr = graphics_object.if_contains("gl_profile");
+            if (gl_profile_value_ptr != nullptr) {
+                graphics.gl_profile = boost::json::value_to<std::string>(*gl_profile_value_ptr);
+            }
+
             const boost::json::value * glow_ambient_star_light_value_ptr = graphics_object.if_contains("glow_ambient_star_light");
             if (glow_ambient_star_light_value_ptr != nullptr) {
                 graphics.glow_ambient_star_light = boost::json::value_to<bool>(*glow_ambient_star_light_value_ptr);

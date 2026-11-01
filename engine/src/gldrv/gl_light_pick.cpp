@@ -27,6 +27,7 @@
 
 
 #include "gl_light.h"
+#include "gl_ffp_compat.h"
 #include "root_generic/options.h"
 #include <queue>
 #include <list>
@@ -112,7 +113,7 @@ void unpicklights() {
         }
         int targ = (*_llights)[*i].Target();
         if (GLLights[targ].options & OpenGLL::GL_ENABLED) {
-            glDisable(GL_LIGHT0 + targ);
+            vsglDisable(GL_LIGHT0 + targ);
             GLLights[targ].options = OpenGLL::GLL_LOCAL;
             GLLights[targ].index = -1;
             (*_llights)[*i].Target() = -1;               //unref
@@ -283,7 +284,7 @@ void gfx_light::dopickenables() {
     /*while (!oldpicked->empty()) {
      *  int glind=(*_llights)[oldpicked->front()].target;
      *  if ((GLLights[glind].options&OpenGLL::GL_ENABLED)&&GLLights[glind].index==-1) {//if hasn't been duly clobbered
-     *   glDisable (GL_LIGHT0+glind);
+     *   vsglDisable(GL_LIGHT0+glind);
      *   GLLights[glind].options &= (~OpenGLL::GL_ENABLED);
      *  }
      *  (*_llights)[oldpicked->front()].target=-1;//make sure it doesn't think it owns any gl lights!
@@ -300,7 +301,7 @@ void gfx_light::dopickenables() {
         int glind = (*_llights)[*oldtrav].target;
         if ((GLLights[glind].options & OpenGLL::GL_ENABLED) && GLLights[glind].index == -1) {
             //if hasn't been duly clobbered
-            glDisable(GL_LIGHT0 + glind);
+            vsglDisable(GL_LIGHT0 + glind);
             GLLights[glind].options &= (~OpenGLL::GL_ENABLED);
         }
         (*_llights)[*oldtrav].target = -1;           //make sure it doesn't think it owns any gl lights!
@@ -313,10 +314,10 @@ void gfx_light::dopickenables() {
 void /*GFXDRVAPI*/ GFXPickLights( const float *transform )
 {
     //picks 1-5 lights to use
-    //glMatrixMode(GL_MODELVIEW);
-    //glPushMatrix();
+    //vsglMatrixMode(GL_MODELVIEW);
+    //vsglPushMatrix();
     //float tm [16]={1,0,0,1000,0,1,0,1000,0,0,1,1000,0,0,0,1};
-    //glLoadIdentity();
+    //vsglLoadIdentity();
     //GFXLoadIdentity(MODEL);
     if (!GFXLIGHTING) return;
     Vector loc( transform[12], transform[13], transform[14] );
@@ -377,7 +378,7 @@ void /*GFXDRVAPI*/ GFXPickLights( const float *transform )
              *  VecT[1]=AttTmp[0]*transform[4]+AttTmp[1]*transform[5]+AttTmp[2]*transform[6];
              *  VecT[2]=AttTmp[0]*transform[8]+AttTmp[1]*transform[9]+AttTmp[2]*transform[10];
              *
-             *  glLightfv (GL_LIGHT0+(*_llights)[light].target, GL_POSITION, VecT);
+             *  vsglLightfv(GL_LIGHT0+(*_llights)[light].target, GL_POSITION, VecT);
              ****/
         }
     }
@@ -402,12 +403,12 @@ void /*GFXDRVAPI*/ GFXPickLights( const float *transform )
             VecT[0]   = AttTmp[0]*transform[0]+AttTmp[1]*transform[1]+AttTmp[2]*transform[2];
             VecT[1]   = AttTmp[0]*transform[4]+AttTmp[1]*transform[5]+AttTmp[2]*transform[6];
             VecT[2]   = AttTmp[0]*transform[8]+AttTmp[1]*transform[9]+AttTmp[2]*transform[10];
-            glLightfv( GL_LIGHT0+(*_llights)[light].target, GL_POSITION, VecT );
+            vsglLightfv( GL_LIGHT0+(*_llights)[light].target, GL_POSITION, VecT );
 
-            //glLightfv (GL_LIGHT0+(*llight_dat)[newQ[i]].target, GL_POSITION, /*wrong*/(*_llights)[light].vect);
+            //vsglLightfv(GL_LIGHT0+(*llight_dat)[newQ[i]].target, GL_POSITION, /*wrong*/(*_llights)[light].vect);
         }
     }
-    //glPopMatrix();
+    //vsglPopMatrix();
 }
 
 /*

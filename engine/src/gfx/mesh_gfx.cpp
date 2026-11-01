@@ -43,6 +43,7 @@
 #include "gfx/technique.h"
 #include "gfx_generic/mesh_xml.h"
 #include "gldrv/gl_globals.h"
+#include "gldrv/gl_ffp_compat.h"
 #include "gldrv/gl_light.h"
 #if defined (CG_SUPPORT)
 #include "src/cg_global.h"
@@ -1841,11 +1842,11 @@ void Mesh::ProcessFixedDrawQueue(size_t techpass, int whichdrawqueue, bool zsort
                 }
                 SetupFogState(c.cloaked);
                 if (c.cloaked & MeshDrawContext::RENORMALIZE) {
-                    glEnable(GL_NORMALIZE);
+                    vsglEnable(GL_NORMALIZE);
                 }
                 vlist->Draw();
                 if (c.cloaked & MeshDrawContext::RENORMALIZE) {
-                    glDisable(GL_NORMALIZE);
+                    vsglDisable(GL_NORMALIZE);
                 }
                 for (unsigned int j = 0; j < specialfxlight.size(); j++) {
                     GFXDeleteLight(specialfxlight[j]);

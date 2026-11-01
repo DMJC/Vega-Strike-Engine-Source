@@ -37,6 +37,9 @@
 #include "winsys.h"
 #include "root_generic/options.h"
 #include "configuration/configuration.h"
+#include "gl_ffp_compat.h"
+#include "gl_renderer.h"
+#include "gl_shader_translate.h"
 
 
 // disable clientside draw for debugging purposes
@@ -44,7 +47,6 @@
 
 // cached gl state
 static unsigned int s_array_buffer = 0;
-static unsigned int s_element_array_buffer = 0;
 
 bool GFXMultiTexAvailable() {
     return gl_options.Multitexture != 0;
@@ -73,64 +75,48 @@ void GFXCircle(float x, float y, float wid, float hei) {
     GFXDraw(GFXLINESTRIP, &verts[0], accuracy + 1);
 }
 
-static void /*GFXDRVAPI*/ GFXDrawSetup(POLYTYPE type, const float data[], int vnum,
-        int vsize, int csize, int tsize0, int tsize1) {
+/**
+ * Copies an interleaved client-memory array into the streaming vertex buffer
+ * and points the streaming VAO's attributes at it.
+ */
+static void GFXDrawSetup(const float data[], int vnum, int vsize, int csize, int tsize0, int tsize1) {
     assert(data && vsize);
-    int stride = sizeof(float) * (vsize + csize + tsize0 + tsize1);
+    const vsgl::InterleavedLayout layout = vsgl::ComputeInterleavedLayout(vsize, csize, tsize0, tsize1);
 
-    GFXBindBuffer(0);
-
-    glVertexPointer(vsize, GL_FLOAT, stride, data);
-    glEnableClientState(GL_VERTEX_ARRAY);
-
-    if (csize) {
-        glColorPointer(csize, GL_FLOAT, stride, data + vsize);
-        glEnableClientState(GL_COLOR_ARRAY);
-    } else {
-        glDisableClientState(GL_COLOR_ARRAY);
-    }
-
-    if (gl_options.Multitexture) {
-        if (tsize0) {
-            glClientActiveTextureARB_p(GL_TEXTURE0);
-            glTexCoordPointer(tsize0, GL_FLOAT, stride, data + vsize + csize);
-            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    vsgl::BindStreamVertexArray();
+    const size_t base = vsgl::StreamVertexData(data, static_cast<size_t>(layout.stride_bytes) * vnum);
+    auto attrib = [&](GLuint index, int size, int offset) {
+        if (size > 0) {
+            (*glVertexAttribPointer_p)(index, size, GL_FLOAT, GL_FALSE, layout.stride_bytes,
+                    reinterpret_cast<const GLvoid *>(base + offset));
+            (*glEnableVertexAttribArray_p)(index);
+        } else {
+            (*glDisableVertexAttribArray_p)(index);
         }
-
-        if (tsize1) {
-            glClientActiveTextureARB_p(GL_TEXTURE1);
-            glTexCoordPointer(tsize1, GL_FLOAT, stride, data + vsize + csize + tsize0);
-            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        }
-    } else if (tsize0) {
-        glTexCoordPointer(tsize0, GL_FLOAT, stride, data + vsize + csize);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    }
+    };
+    attrib(vsgl::kAttribVertex, layout.position_size, layout.position_offset);
+    attrib(vsgl::kAttribColor, layout.color_size, layout.color_offset);
+    attrib(vsgl::kAttribMultiTexCoord0, layout.tex0_size, layout.tex0_offset);
+    attrib(vsgl::kAttribMultiTexCoord0 + 1, layout.tex1_size, layout.tex1_offset);
+    // Other users of the streaming VAO (GFXQuadList) may have left these on
+    attrib(vsgl::kAttribNormal, 0, 0);
+    attrib(vsgl::kAttribMultiTexCoord0 + 2, 0, 0);
 }
 
-static void /*GFXDRVAPI*/ GFXDrawCleanup(POLYTYPE type, const float data[], int vnum,
-        int vsize, int csize, int tsize0, int tsize1) {
-    if (gl_options.Multitexture) {
-        if (tsize1) {
-            glClientActiveTextureARB_p(GL_TEXTURE1);
-            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-        }
-
-        if (tsize0) {
-            if (tsize1) {
-                glClientActiveTextureARB_p(GL_TEXTURE0);
-            }
-            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-        }
-    } else if (tsize0) {
-        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+static void GFXDrawStreamed(POLYTYPE type, const float data[], int vnum, const void *indices, int index_size,
+        int nelem, int vsize, int csize, int tsize0, int tsize1) {
+    GFXDrawSetup(data, vnum, vsize, csize, tsize0, tsize1);
+    const vsgl::PolyType poly = static_cast<vsgl::PolyType>(type);
+    const int count = indices != nullptr ? nelem : vnum;
+    const vsgl::DrawPlan plan = vsgl::BuildDrawPlan(&poly, &count, 1, indices, index_size);
+    size_t index_base = 0;
+    if (!plan.indices.empty()) {
+        index_base = vsgl::StreamIndexData(&plan.indices[0], plan.indices.size() * sizeof(uint32_t));
+    } else if (indices != nullptr) {
+        index_base = vsgl::StreamIndexData(indices, static_cast<size_t>(nelem) * index_size);
     }
-
-    if (csize) {
-        glDisableClientState(GL_COLOR_ARRAY);
-    }
-
-    glDisableClientState(GL_VERTEX_ARRAY);
+    vsgl::PrepareDraw(vsgl::MapPolyType(poly).primitive, csize != 0);
+    vsgl::DrawCommands(plan.commands, index_base);
 }
 
 void /*GFXDRVAPI*/ GFXDraw(POLYTYPE type, const float data[], int vnum,
@@ -139,12 +125,7 @@ void /*GFXDRVAPI*/ GFXDraw(POLYTYPE type, const float data[], int vnum,
     if (vnum <= 0) {
         return;
     }
-
-    GFXDrawSetup(type, data, vnum, vsize, csize, tsize0, tsize1);
-
-    glDrawArrays(PolyLookup(type), 0, vnum);
-
-    GFXDrawCleanup(type, data, vnum, vsize, csize, tsize0, tsize1);
+    GFXDrawStreamed(type, data, vnum, nullptr, 0, 0, vsize, csize, tsize0, tsize1);
 #endif
 }
 
@@ -155,15 +136,7 @@ void /*GFXDRVAPI*/ GFXDrawElements(POLYTYPE type,
     if (vnum <= 0 || nelem <= 0) {
         return;
     }
-
-    GFXDrawSetup(type, data, vnum, vsize, csize, tsize0, tsize1);
-
-    // Note: glDrawRangeElements doesn't seem to work well in MESA,
-    //       stay away from it
-    GFXBindElementBuffer(0);
-    glDrawElements(PolyLookup(type), nelem, GL_UNSIGNED_BYTE, indices);
-
-    GFXDrawCleanup(type, data, vnum, vsize, csize, tsize0, tsize1);
+    GFXDrawStreamed(type, data, vnum, indices, 1, nelem, vsize, csize, tsize0, tsize1);
 #endif
 }
 
@@ -174,15 +147,7 @@ void /*GFXDRVAPI*/ GFXDrawElements(POLYTYPE type,
     if (vnum <= 0 || nelem <= 0) {
         return;
     }
-
-    GFXDrawSetup(type, data, vnum, vsize, csize, tsize0, tsize1);
-
-    // Note: glDrawRangeElements doesn't seem to work well in MESA,
-    //       stay away from it
-    GFXBindElementBuffer(0);
-    glDrawElements(PolyLookup(type), nelem, GL_UNSIGNED_SHORT, indices);
-
-    GFXDrawCleanup(type, data, vnum, vsize, csize, tsize0, tsize1);
+    GFXDrawStreamed(type, data, vnum, indices, 2, nelem, vsize, csize, tsize0, tsize1);
 #endif
 }
 
@@ -193,34 +158,27 @@ void /*GFXDRVAPI*/ GFXDrawElements(POLYTYPE type,
     if (vnum <= 0 || nelem <= 0) {
         return;
     }
-
-    GFXDrawSetup(type, data, vnum, vsize, csize, tsize0, tsize1);
-
-    // Note: glDrawRangeElements doesn't seem to work well in MESA,
-    //       stay away from it
-    GFXBindElementBuffer(0);
-    glDrawElements(PolyLookup(type), nelem, GL_UNSIGNED_INT, indices);
-
-    GFXDrawCleanup(type, data, vnum, vsize, csize, tsize0, tsize1);
+    GFXDrawStreamed(type, data, vnum, indices, 4, nelem, vsize, csize, tsize0, tsize1);
 #endif
 }
 
 void /*GFXDRVAPI*/ GFXBindBuffer(unsigned int vbo_data) {
-#ifndef NO_VBO_SUPPORT
     if (s_array_buffer != vbo_data) {
         s_array_buffer = vbo_data;
         (*glBindBufferARB_p)(GL_ARRAY_BUFFER_ARB, vbo_data);
     }
-#endif
+}
+
+void GFXForgetBuffer(unsigned int vbo_data) {
+    if (s_array_buffer == vbo_data) {
+        s_array_buffer = 0;
+    }
 }
 
 void /*GFXDRVAPI*/ GFXBindElementBuffer(unsigned int element_data) {
-#ifndef NO_VBO_SUPPORT
-    if (s_element_array_buffer != element_data) {
-        s_element_array_buffer = element_data;
-        (*glBindBufferARB_p)(GL_ELEMENT_ARRAY_BUFFER_ARB, element_data);
-    }
-#endif
+    // The element buffer binding belongs to the bound vertex array object,
+    // so it cannot be cached globally.
+    (*glBindBufferARB_p)(GL_ELEMENT_ARRAY_BUFFER_ARB, element_data);
 }
 
 void /*GFXDRVAPI*/ GFXBeginScene() {
@@ -307,16 +265,16 @@ void GFXPointSize(const float size) {
 }
 
 void GFXLineWidth(const float size) {
-    glLineWidth(size);
+    // Forward-compatible contexts (macOS) reject anything wider than 1
+    glLineWidth(vsgl::ClampLineWidth(size));
 }
 
 void /*GFXDRVAPI*/ GFXColorf(const GFXColor &col) {
-    glColor4fv(&col.r);
+    vsglColor4fv(&col.r);
 }
 
 GFXColor GFXColorf() {
-    float col[4];
-    glGetFloatv(GL_CURRENT_COLOR, col);     //It's best this way, we don't use it much, anyway.
+    const float *col = vsglState().CurrentColor();
     return GFXColor(col[0], col[1], col[2], col[3]);
 }
 
@@ -331,29 +289,23 @@ void /*GFXDRVAPI*/ GFXBlendColor( const GFXColor &col )
 #endif
 
 void /*GFXDRVAPI*/ GFXColor4f(const float r, const float g, const float b, const float a) {
-    glColor4f(r, g, b, a);
+    vsglColor4f(r, g, b, a);
 }
 
+// Display lists do not exist in core profiles; vertex lists keep their data
+// in buffer objects instead (see gfxlib_struct.cpp).
 int GFXCreateList() {
-    glGetError();
-    int list = glGenLists(1);
-    glNewList(list, GL_COMPILE);
-    return list;
+    return 0;
 }
 
 GFXBOOL GFXEndList() {
-    glEndList();
-    return glGetError() != GL_OUT_OF_MEMORY;
+    return GFXFALSE;
 }
 
 void GFXCallList(int list) {
-    glCallList(list);
 }
 
 void GFXDeleteList(int list) {
-    if (glIsList(list)) {
-        glDeleteLists(list, 1);
-    }
 }
 
 void GFXSubwindow(int x, int y, int xsize, int ysize) {

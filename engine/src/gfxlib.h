@@ -474,6 +474,8 @@ void GFXDrawElements(POLYTYPE type,
 ///Bind VBO data, noop if VBO not supported
 void GFXBindBuffer(unsigned int vbo_data);
 void GFXBindElementBuffer(unsigned int element_data);
+///Call before deleting a buffer object: deleting it unbinds it, so GFXBindBuffer must not assume it is still bound
+void GFXForgetBuffer(unsigned int vbo_data);
 ///Optimizes a list to reuse repeated vertices!
 void GFXOptimizeList(GFXVertex *old, int numV, GFXVertex **newlist, int *numnewVertices, unsigned int **indices);
 

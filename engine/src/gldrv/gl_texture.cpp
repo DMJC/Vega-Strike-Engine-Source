@@ -29,6 +29,7 @@
 #define GL_EXT_texture_env_combine 1
 #include "gldrv/sdds.h"
 #include "gl_globals.h"
+#include "gl_ffp_compat.h"
 #include "configuration/configuration.h"
 #include "root_generic/vs_globals.h"
 #include "src/vegastrike.h"
@@ -92,7 +93,36 @@ struct GLTexture {
     GLenum textureformat;
     GLenum targets;
     enum FILTER mipmapped;
+    /// Whether the base internal format has alpha (GL_REPLACE keeps the incoming alpha otherwise)
+    bool has_alpha;
 };
+
+static bool InternalFormatHasAlpha(GLenum internalformat) {
+    switch (internalformat) {
+        case GL_RGB:
+        case GL_RGB8:
+        case GL_RGB16:
+        case GL_COMPRESSED_RGB_ARB:
+        case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
+            return false;
+        default:
+            return true;
+    }
+}
+
+/**
+ * glGenerateMipmap works per texture, so a cube map regenerates once its last
+ * face has arrived; that face is the last one GFXTransferTexture receives.
+ */
+static void GenerateMipmaps(GLenum target, GLenum image_target) {
+    if (target == GL_TEXTURE_CUBE_MAP_EXT && image_target != GL_TEXTURE_CUBE_MAP_NEGATIVE_Z_EXT) {
+        return;
+    }
+    if (target == GL_TEXTURE_RECTANGLE_ARB) {
+        return;  // rectangle textures have no mipmaps
+    }
+    (*glGenerateMipmap_p)(target);
+}
 //static GLTexture *textures=NULL;
 //static GLEnum * targets=NULL;
 
@@ -127,194 +157,6 @@ bool isPowerOfTwo(int num, int &which) {
     return true;
 }
 
-#if defined(__APPLE__) && defined (__MACH__)
-
-static GLint round2( GLint n )
-{
-    GLint m;
-    for (m = 1; m < n; m *= 2)
-        ;
-    /* m>=n */
-    if (m-n <= n-m/2)
-        return m;
-    else
-        return m/2;
-}
-
-static GLint bytes_per_pixel( GLenum format, GLenum type )
-{
-    GLint n, m;
-    switch (format)
-    {
-    case GL_COLOR_INDEX:
-    case GL_STENCIL_INDEX:
-    case GL_DEPTH_COMPONENT:
-    case GL_RED:
-    case GL_GREEN:
-    case GL_BLUE:
-    case GL_ALPHA:
-    case GL_LUMINANCE:
-        n = 1;
-        break;
-    case GL_LUMINANCE_ALPHA:
-        n = 2;
-        break;
-    case GL_RGB:
-    case GL_BGR:
-        n = 3;
-        break;
-    case GL_RGBA:
-    case GL_BGRA:
-#ifdef GL_EXT_abgr
-    case GL_ABGR_EXT:
-#endif
-        n = 4;
-        break;
-    default:
-        n = 0;
-    }
-    switch (type)
-    {
-    case GL_UNSIGNED_BYTE:
-        m = sizeof (GLubyte);
-        break;
-    case GL_BYTE:
-        m = sizeof (GLbyte);
-        break;
-    case GL_BITMAP:
-        m = 1;
-        break;
-    case GL_UNSIGNED_SHORT:
-        m = sizeof (GLushort);
-        break;
-    case GL_SHORT:
-        m = sizeof (GLshort);
-        break;
-    case GL_UNSIGNED_INT:
-        m = sizeof (GLuint);
-        break;
-    case GL_INT:
-        m = sizeof (GLint);
-        break;
-    case GL_FLOAT:
-        m = sizeof (GLfloat);
-        break;
-    default:
-        m = 0;
-    }
-    return n*m;
-}
-
-static GLint appleBuild2DMipmaps( GLenum target,
-                                  GLint components,
-                                  GLsizei width,
-                                  GLsizei height,
-                                  GLenum format,
-                                  GLenum type,
-                                  const void *data )
-{
-    GLint     w, h, maxsize;
-    void     *image, *newimage;
-    GLint     neww, newh, level, bpp;
-    int       error;
-    GLboolean done;
-    GLint     retval = 0;
-    GLint     unpackrowlength, unpackalignment, unpackskiprows, unpackskippixels;
-    GLint     packrowlength, packalignment, packskiprows, packskippixels;
-    if (width < 1 || height < 1)
-        return GLU_INVALID_VALUE;
-    glGetIntegerv( GL_MAX_TEXTURE_SIZE, &maxsize );
-
-    w   = round2( width );
-    if (w > maxsize)
-        w = maxsize;
-    h   = round2( height );
-    if (h > maxsize)
-        h = maxsize;
-    bpp = bytes_per_pixel( format, type );
-    if (bpp == 0)
-        /* probably a bad format or type enum */
-        return GLU_INVALID_ENUM;
-    /* Get current glPixelStore values */
-    glGetIntegerv( GL_UNPACK_ROW_LENGTH, &unpackrowlength );
-    glGetIntegerv( GL_UNPACK_ALIGNMENT, &unpackalignment );
-    glGetIntegerv( GL_UNPACK_SKIP_ROWS, &unpackskiprows );
-    glGetIntegerv( GL_UNPACK_SKIP_PIXELS, &unpackskippixels );
-    glGetIntegerv( GL_PACK_ROW_LENGTH, &packrowlength );
-    glGetIntegerv( GL_PACK_ALIGNMENT, &packalignment );
-    glGetIntegerv( GL_PACK_SKIP_ROWS, &packskiprows );
-    glGetIntegerv( GL_PACK_SKIP_PIXELS, &packskippixels );
-
-    /* set pixel packing */
-    glPixelStorei( GL_PACK_ROW_LENGTH, 0 );
-    glPixelStorei( GL_PACK_ALIGNMENT, 1 );
-    glPixelStorei( GL_PACK_SKIP_ROWS, 0 );
-    glPixelStorei( GL_PACK_SKIP_PIXELS, 0 );
-
-    done = GL_FALSE;
-    if (w != width || h != height) {
-        /* must rescale image to get "top" mipmap texture image */
-        image = malloc( (w+4)*h*bpp );
-        if (!image)
-            return GLU_OUT_OF_MEMORY;
-        error = gluScaleImage( format, width, height, type, data,
-                               w, h, type, image );
-        if (error) {
-            retval = error;
-            done   = GL_TRUE;
-        }
-    } else {
-        image = (void*) data;
-    }
-    level = 0;
-    while (!done) {
-        if (image != data) {
-            /* set pixel unpacking */
-            glPixelStorei( GL_UNPACK_ROW_LENGTH, 0 );
-            glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
-            glPixelStorei( GL_UNPACK_SKIP_ROWS, 0 );
-            glPixelStorei( GL_UNPACK_SKIP_PIXELS, 0 );
-        }
-        glTexImage2D( target, level, components, w, h, 0, format, type, image );
-        if (w == 1 && h == 1)
-            break;
-        neww     = (w < 2) ? 1 : w/2;
-        newh     = (h < 2) ? 1 : h/2;
-        newimage = malloc( (neww+4)*newh*bpp );
-        if (!newimage)
-            return GLU_OUT_OF_MEMORY;
-        error    = gluScaleImage( format, w, h, type, image,
-                                  neww, newh, type, newimage );
-        if (error) {
-            retval = error;
-            done   = GL_TRUE;
-        }
-        if (image != data)
-            free( image );
-        image = newimage;
-
-        w     = neww;
-        h     = newh;
-        level++;
-    }
-    if (image != data)
-        free( image );
-    /* Restore original glPixelStore state */
-    glPixelStorei( GL_UNPACK_ROW_LENGTH, unpackrowlength );
-    glPixelStorei( GL_UNPACK_ALIGNMENT, unpackalignment );
-    glPixelStorei( GL_UNPACK_SKIP_ROWS, unpackskiprows );
-    glPixelStorei( GL_UNPACK_SKIP_PIXELS, unpackskippixels );
-    glPixelStorei( GL_PACK_ROW_LENGTH, packrowlength );
-    glPixelStorei( GL_PACK_ALIGNMENT, packalignment );
-    glPixelStorei( GL_PACK_SKIP_ROWS, packskiprows );
-    glPixelStorei( GL_PACK_SKIP_PIXELS, packskippixels );
-
-    return retval;
-}
-
-#define gluBuild2DMipmaps appleBuild2DMipmaps
-
-#endif
 
 GFXBOOL /*GFXDRVAPI*/ GFXCreateTexture(int width,
         int height,
@@ -390,12 +232,12 @@ GFXBOOL /*GFXDRVAPI*/ GFXCreateTexture(int width,
             glTexParameteri(textures.at(*handle).targets, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         }
     }
-    glTexParameterf(textures.at(*handle).targets, GL_TEXTURE_PRIORITY, .5);
     textures.at(*handle).width = width;
     textures.at(*handle).height = height;
     textures.at(*handle).iwidth = width;
     textures.at(*handle).iheight = height;
     textures.at(*handle).palette = NULL;
+    textures.at(*handle).has_alpha = true;
     if (palette && textureformat == PALETTE8) {
         VS_LOG(trace, " palette ");
         textures.at(*handle).palette = (GLubyte *) malloc(sizeof(GLubyte) * 1024);
@@ -406,11 +248,7 @@ GFXBOOL /*GFXDRVAPI*/ GFXCreateTexture(int width,
 }
 
 void /*GFXDRVAPI*/ GFXPrioritizeTexture(unsigned int handle, float priority) {
-    glPrioritizeTextures(1,
-#if defined (__APPLE__)
-            (GLuint*)
-#endif
-            &handle, &priority);
+    // Texture residency priorities do not exist in core profiles
 }
 
 void /*GFXDRVAPI*/ GFXAttachPalette(unsigned char *palette, int handle) {
@@ -724,7 +562,6 @@ GFXBOOL /*GFXDRVAPI*/ GFXTransferTexture(unsigned char *buffer,
     if (handle < 0) {
         return GFXFALSE;
     }
-    int error = 0;
 
     int logsize = 1;
     int logwid = 1;
@@ -935,6 +772,7 @@ GFXBOOL /*GFXDRVAPI*/ GFXTransferTexture(unsigned char *buffer,
     }
     if (internformat != PALETTE8 && internformat != PNGPALETTE8) {
         internalformat = GetTextureFormat(internformat);
+        textures.at(handle).has_alpha = InternalFormatHasAlpha(internalformat);
         if (((textures.at(handle).mipmapped & (TRILINEAR | MIPMAP)) && gl_options.mipmap >= 2) || detail_texture) {
             if (detail_texture) {
                 textures.at(handle).mipmapped =  configuration().graphics.detail_texture_trilinear ? TRILINEAR : MIPMAP;
@@ -989,14 +827,17 @@ GFXBOOL /*GFXDRVAPI*/ GFXTransferTexture(unsigned char *buffer,
                 }
                 /* END HACK */
             } else {
-                //We want mipmaps but we have uncompressed data
-                gluBuild2DMipmaps(image2D,
+                //We want mipmaps but we have uncompressed data: let the GL build them
+                glTexImage2D(image2D,
+                        0,
                         internalformat,
                         textures.at(handle).width,
                         textures.at(handle).height,
+                        0,
                         textures.at(handle).textureformat,
                         GL_UNSIGNED_BYTE,
                         buffer);
+                GenerateMipmaps(textures.at(handle).targets, image2D);
             }
             if (tempbuf != nullptr) {
                 free(tempbuf);
@@ -1026,45 +867,7 @@ GFXBOOL /*GFXDRVAPI*/ GFXTransferTexture(unsigned char *buffer,
     } else {
         //THIS IS 8bpp LAND
         internalformat = GetTextureFormat(internformat);
-        //IRIX has no GL_COLOR_INDEX8 extension
-#if defined (GL_COLOR_INDEX8_EXT)
-        if (gl_options.PaletteExt) {
-            error = glGetError();
-            glColorTable_p(textures.at(handle).targets, GL_RGBA, 256, GL_RGBA, GL_UNSIGNED_BYTE, textures.at(handle).palette);
-            error = glGetError();
-            if (error) {
-                if (tempbuf != nullptr) {
-                    free(tempbuf);
-                    tempbuf = nullptr;
-                }
-                gl_options.compression = comptemp;
-                if (data != nullptr) {
-                    free(data);
-                    data = nullptr;
-                }
-                return GFXFALSE;
-            }
-            if ((textures.at(handle).mipmapped & (MIPMAP | TRILINEAR)) && gl_options.mipmap >= 2) {
-                gluBuild2DMipmaps(image2D,
-                        GL_COLOR_INDEX8_EXT,
-                        textures.at(handle).width,
-                        textures.at(handle).height,
-                        GL_COLOR_INDEX,
-                        GL_UNSIGNED_BYTE,
-                        buffer);
-            } else {
-                glTexImage2D(image2D,
-                        0,
-                        GL_COLOR_INDEX8_EXT,
-                        textures.at(handle).width,
-                        textures.at(handle).height,
-                        0,
-                        GL_COLOR_INDEX,
-                        GL_UNSIGNED_BYTE,
-                        buffer);
-            }
-        } else
-#endif
+        // Core profiles have no paletted textures: expand to RGBA
         {
             int nsize = 4 * textures.at(handle).iheight * textures.at(handle).iwidth;
             unsigned char *tbuf = (unsigned char *) malloc(sizeof(unsigned char) * nsize);
@@ -1147,43 +950,43 @@ void GFXTextureCoordGenMode(int stage, GFXTEXTURECOORDMODE tex, const float para
     GFXActiveTexture(stage);
     switch (tex) {
         case NO_GEN:
-            glDisable(GL_TEXTURE_GEN_S);
-            glDisable(GL_TEXTURE_GEN_T);
-            glDisable(GL_TEXTURE_GEN_R);
+            vsglDisable(GL_TEXTURE_GEN_S);
+            vsglDisable(GL_TEXTURE_GEN_T);
+            vsglDisable(GL_TEXTURE_GEN_R);
             break;
         case EYE_LINEAR_GEN:
-            glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR);
-            glTexGenfv(GL_S, GL_EYE_PLANE, params);
-            glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR);
-            glTexGenfv(GL_T, GL_EYE_PLANE, paramt);
-            glEnable(GL_TEXTURE_GEN_S);
-            glEnable(GL_TEXTURE_GEN_T);
-            glDisable(GL_TEXTURE_GEN_R);
+            vsglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR);
+            vsglTexGenfv(GL_S, GL_EYE_PLANE, params);
+            vsglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR);
+            vsglTexGenfv(GL_T, GL_EYE_PLANE, paramt);
+            vsglEnable(GL_TEXTURE_GEN_S);
+            vsglEnable(GL_TEXTURE_GEN_T);
+            vsglDisable(GL_TEXTURE_GEN_R);
             break;
         case OBJECT_LINEAR_GEN:
-            glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
-            glTexGenfv(GL_S, GL_OBJECT_PLANE, params);
-            glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
-            glTexGenfv(GL_T, GL_OBJECT_PLANE, paramt);
-            glEnable(GL_TEXTURE_GEN_S);
-            glEnable(GL_TEXTURE_GEN_T);
-            glDisable(GL_TEXTURE_GEN_R);
+            vsglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
+            vsglTexGenfv(GL_S, GL_OBJECT_PLANE, params);
+            vsglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
+            vsglTexGenfv(GL_T, GL_OBJECT_PLANE, paramt);
+            vsglEnable(GL_TEXTURE_GEN_S);
+            vsglEnable(GL_TEXTURE_GEN_T);
+            vsglDisable(GL_TEXTURE_GEN_R);
             break;
         case SPHERE_MAP_GEN:
-            glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
-            glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
-            glEnable(GL_TEXTURE_GEN_S);
-            glEnable(GL_TEXTURE_GEN_T);
-            glDisable(GL_TEXTURE_GEN_R);
+            vsglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+            vsglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+            vsglEnable(GL_TEXTURE_GEN_S);
+            vsglEnable(GL_TEXTURE_GEN_T);
+            vsglDisable(GL_TEXTURE_GEN_R);
             break;
         case CUBE_MAP_GEN:
 #ifdef NV_CUBE_MAP
-            glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP_NV);
-            glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP_NV);
-            glTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP_NV);
-            glEnable(GL_TEXTURE_GEN_S);
-            glEnable(GL_TEXTURE_GEN_T);
-            glEnable(GL_TEXTURE_GEN_R);
+            vsglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP_NV);
+            vsglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP_NV);
+            vsglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP_NV);
+            vsglEnable(GL_TEXTURE_GEN_S);
+            vsglEnable(GL_TEXTURE_GEN_T);
+            vsglEnable(GL_TEXTURE_GEN_R);
 #else
             assert( 0 );
 #endif
@@ -1201,6 +1004,7 @@ void /*GFXDRVAPI*/ GFXSelectTexture(int handle, int stage) {
         if (gl_options.Multitexture || (stage == 0)) {
             glBindTexture(textures.at(handle).targets, textures.at(handle).name);
         }
+        vsglState().SetTextureHasAlpha(textures.at(handle).has_alpha);
     }
 }
 
@@ -1208,92 +1012,39 @@ void GFXTextureEnv(int stage, GFXTEXTUREENVMODES mode, float arg2) {
     if (stage && stage >= static_cast<int>(gl_options.Multitexture)) {
         return;
     }
-    GLenum type;
     GFXActiveTexture(stage);
+    // These used to be GL_COMBINE setups; the fixed-function program
+    // implements each of them as a mode (see gl_ffp_shader.cpp).
+    vsgl::FixedFunctionState &state = vsglState();
     switch (mode) {
         case GFXREPLACETEXTURE:
-            type = GL_REPLACE;
-            goto ENVMODE;
+            state.SetTexEnvMode(vsgl::TexEnvMode::Replace);
+            break;
         case GFXADDTEXTURE:
-            type = GL_ADD;
-            goto ENVMODE;
+            state.SetTexEnvMode(vsgl::TexEnvMode::Add);
+            break;
         case GFXMODULATETEXTURE:
-            type = GL_MODULATE;
-        ENVMODE:
-            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, type);
+            state.SetTexEnvMode(vsgl::TexEnvMode::Modulate);
             break;
-        case GFXINTERPOLATETEXTURE:
-            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_ARB, GL_PREVIOUS_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA_ARB, GL_PREVIOUS_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA_ARB, GL_SRC_ALPHA);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB_ARB, GL_TEXTURE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_ALPHA_ARB, GL_TEXTURE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA_ARB, GL_SRC_ALPHA);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE2_RGB_ARB, GL_CONSTANT);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB_ARB, GL_SRC_ALPHA);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE2_ALPHA_ARB, GL_CONSTANT);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_ALPHA_ARB, GL_SRC_ALPHA);
-            {
-                GLfloat arg2v[4] = {
-                        0, 0, 0, 1.0f - arg2
-                };
-                glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, arg2v);
-            }
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_ARB, GL_INTERPOLATE_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA_ARB, GL_INTERPOLATE_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE_ARB, 1);
-            glTexEnvi(GL_TEXTURE_ENV, GL_ALPHA_SCALE, 1);
+        case GFXINTERPOLATETEXTURE: {
+            // prev * (1 - arg2) + tex * arg2
+            const float env_color[4] = {0, 0, 0, 1.0f - arg2};
+            state.SetTexEnvColor(env_color);
+            state.SetTexEnvMode(vsgl::TexEnvMode::Interpolate);
             break;
-        case GFXCOMPOSITETEXTURE:
-            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_ARB, GL_PREVIOUS_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA_ARB, GL_CONSTANT);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA_ARB, GL_SRC_ALPHA);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB_ARB, GL_TEXTURE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE2_RGB_ARB, GL_TEXTURE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB_ARB, GL_ONE_MINUS_SRC_ALPHA);
-            {
-                GLfloat arg2v[4] = {
-                        0, 0, 0, arg2
-                };
-                glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, arg2v);
-            }
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_ARB, GL_INTERPOLATE_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA_ARB, GL_REPLACE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE_ARB, 1);
-            glTexEnvi(GL_TEXTURE_ENV, GL_ALPHA_SCALE, 1);
+        }
+        case GFXCOMPOSITETEXTURE: {
+            // prev blended with tex by tex alpha; alpha = arg2
+            const float env_color[4] = {0, 0, 0, arg2};
+            state.SetTexEnvColor(env_color);
+            state.SetTexEnvMode(vsgl::TexEnvMode::Composite);
             break;
+        }
         case GFXADDSIGNEDTEXTURE:
-            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_ARB, GL_PREVIOUS_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA_ARB, GL_PREVIOUS_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB_ARB, GL_TEXTURE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_ARB, GL_ADD_SIGNED_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA_ARB, GL_REPLACE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE_ARB, 1);
-            glTexEnvi(GL_TEXTURE_ENV, GL_ALPHA_SCALE, 1);
+            state.SetTexEnvMode(vsgl::TexEnvMode::AddSigned);
             break;
         case GFXDETAILTEXTURE:
-            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_ARB, GL_PREVIOUS_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA_ARB, GL_PREVIOUS_ARB);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA_ARB, GL_SRC_ALPHA);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB_ARB, GL_TEXTURE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_ALPHA_ARB, GL_TEXTURE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB_ARB, GL_SRC_COLOR);
-            glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA_ARB, GL_SRC_ALPHA);
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_ARB, GL_MODULATE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA_ARB, GL_MODULATE);
-            glTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE_ARB, 2);
-            glTexEnvi(GL_TEXTURE_ENV, GL_ALPHA_SCALE, 2);
+            state.SetTexEnvMode(vsgl::TexEnvMode::Detail);
             break;
     }
 }
@@ -1315,16 +1066,16 @@ void GFXTextureWrap(int stage, GFXTEXTUREWRAPMODES mode, enum TEXTURE_TARGET tar
     GLenum e2 = 0;
     switch (mode) {
         case GFXCLAMPTEXTURE:
-            e1 = GL_CLAMP;
-            e2 = GL_CLAMP_TO_EDGE_EXT;
+            e1 = GL_CLAMP_TO_EDGE_EXT;
+            e2 = 0;
             break;
         case GFXREPEATTEXTURE:
             e1 = GL_REPEAT;
             e2 = 0;
             break;
         case GFXBORDERTEXTURE:
-            e1 = GL_CLAMP;
-            e2 = GL_CLAMP_TO_BORDER_ARB;
+            e1 = GL_CLAMP_TO_BORDER_ARB;
+            e2 = 0;
             break;
     }
     glTexParameteri(tt, GL_TEXTURE_WRAP_S, e1);

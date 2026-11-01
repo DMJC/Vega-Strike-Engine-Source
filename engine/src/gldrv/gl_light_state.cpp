@@ -30,6 +30,7 @@
 #include <cstring>
 //#include <vegastrike.h>
 #include "gl_globals.h"
+#include "gl_ffp_compat.h"
 #include "hashtable_3d.h"
 #include "gl_light.h"
 
@@ -152,11 +153,11 @@ void GFXUploadLightState(int max_light_location,
     if (!shader) {
         //only bother with actual GL state in the event of lack of shaders
         for (size_t i = 0; i < (size_t) GFX_MAX_LIGHTS; ++i) {
-            int isenabled = glIsEnabled(GL_LIGHT0 + i);
+            int isenabled = vsglIsEnabled(GL_LIGHT0 + i);
             if (isenabled && !lightData[i]) {
-                glDisable(GL_LIGHT0 + i);
+                vsglDisable(GL_LIGHT0 + i);
             } else if (lightData[i] && !isenabled) {
-                glEnable(GL_LIGHT0 + i);
+                vsglEnable(GL_LIGHT0 + i);
             }
         }
     } else {
@@ -293,7 +294,7 @@ void gfx_light::SendGLPosition(const GLenum target) const {
             static_cast<float>(vect[2] + _light_offset.z),
             1
     };
-    glLightfv(target, GL_POSITION, v);
+    vsglLightfv(target, GL_POSITION, v);
 }
 
 void gfx_light::UpdateGLLight() const {
@@ -301,9 +302,9 @@ void gfx_light::UpdateGLLight() const {
 }
 
 inline void gfx_light::ContextSwitchClobberLight(const GLenum gltarg, const int original) const {
-    glLightf(gltarg, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
-    glLightf(gltarg, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
-    glLightf(gltarg, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
+    vsglLightf(gltarg, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
+    vsglLightf(gltarg, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
+    vsglLightf(gltarg, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
 
     float v[4];
 #define glLightfvAttenuated(gltarg, attr, value, attenuation) do { \
@@ -311,13 +312,13 @@ inline void gfx_light::ContextSwitchClobberLight(const GLenum gltarg, const int 
         v[1]=value[1]*attenuation; \
         v[2]=value[2]*attenuation; \
         v[3]=value[3]*attenuation; \
-        glLightfv( gltarg, attr, v ); \
+        vsglLightfv( gltarg, attr, v ); \
     } while(0)
 
     SendGLPosition(gltarg);
     glLightfvAttenuated(gltarg, GL_DIFFUSE, diffuse, occlusion);
     glLightfvAttenuated(gltarg, GL_SPECULAR, specular, occlusion);
-    glLightfv(gltarg, GL_AMBIENT, ambient);
+    vsglLightfv(gltarg, GL_AMBIENT, ambient);
     if (original != -1) {
         gfx_light *orig = &((*_llights)[GLLights[original].index]);
         orig->target = -1;
@@ -330,18 +331,18 @@ inline void gfx_light::FinesseClobberLight(const GLenum gltarg, const int origin
     if (attenuated()) {
         if (orig->attenuated()) {
             if (orig->attenuate[0] != attenuate[0]) {
-                glLightf(gltarg, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
+                vsglLightf(gltarg, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
             }
             if (orig->attenuate[1] != attenuate[1]) {
-                glLightf(gltarg, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
+                vsglLightf(gltarg, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
             }
             if (orig->attenuate[2] != attenuate[2]) {
-                glLightf(gltarg, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
+                vsglLightf(gltarg, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
             }
         } else {
-            glLightf(gltarg, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
-            glLightf(gltarg, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
-            glLightf(gltarg, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
+            vsglLightf(gltarg, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
+            vsglLightf(gltarg, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
+            vsglLightf(gltarg, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
         }
     }
     if (vect[0] != orig->vect[0] || vect[1] != orig->vect[1] || vect[2] != orig->vect[2]
@@ -350,15 +351,15 @@ inline void gfx_light::FinesseClobberLight(const GLenum gltarg, const int origin
     }
     if (diffuse[0] != orig->diffuse[0] || diffuse[1] != orig->diffuse[1] || diffuse[2] != orig->diffuse[2] || diffuse[3]
             != orig->diffuse[3]) {
-        glLightfv(gltarg, GL_DIFFUSE, diffuse);
+        vsglLightfv(gltarg, GL_DIFFUSE, diffuse);
     }
     if (specular[0] != orig->specular[0] || specular[1] != orig->specular[1] || specular[2] != orig->specular[2]
             || specular[3] != orig->specular[3]) {
-        glLightfv(gltarg, GL_SPECULAR, specular);
+        vsglLightfv(gltarg, GL_SPECULAR, specular);
     }
     if (ambient[0] != orig->ambient[0] || ambient[1] != orig->ambient[1] || ambient[2] != orig->ambient[2] || ambient[3]
             != orig->ambient[3]) {
-        glLightfv(gltarg, GL_AMBIENT, ambient);
+        vsglLightfv(gltarg, GL_AMBIENT, ambient);
     }
     orig->target = -1;
     GLLights[original].index = -1;
@@ -368,11 +369,11 @@ void gfx_light::ClobberGLLight(const int target) {
     this->target = target;
     if (enabled() != ((GLLights[target].options & OpenGLL::GL_ENABLED) != 0)) {
         if (enabled()) {
-            glEnable(GL_LIGHT0 + target);
+            vsglEnable(GL_LIGHT0 + target);
             GLLights[target].options |= OpenGLL::GL_ENABLED;
         } else {
             GLLights[target].options &= (~OpenGLL::GL_ENABLED);
-            glDisable(GL_LIGHT0 + target);
+            vsglDisable(GL_LIGHT0 + target);
         }
     }
     GLLights[target].options &= (OpenGLL::GL_ENABLED);     //turn off options
@@ -415,7 +416,7 @@ void gfx_light::ResetProperties(const enum LIGHT_TARGET light_targ, const GFXCol
             if (target < 0) {
                 break;
             }
-            glLightfv(GL_LIGHT0 + target, GL_DIFFUSE, diffuse);
+            vsglLightfv(GL_LIGHT0 + target, GL_DIFFUSE, diffuse);
             break;
         case SPECULAR:
             specular[0] = color.r;
@@ -425,7 +426,7 @@ void gfx_light::ResetProperties(const enum LIGHT_TARGET light_targ, const GFXCol
             if (target < 0) {
                 break;
             }
-            glLightfv(GL_LIGHT0 + target, GL_SPECULAR, specular);
+            vsglLightfv(GL_LIGHT0 + target, GL_SPECULAR, specular);
             break;
         case AMBIENT:
             ambient[0] = color.r;
@@ -435,7 +436,7 @@ void gfx_light::ResetProperties(const enum LIGHT_TARGET light_targ, const GFXCol
             if (target < 0) {
                 break;
             }
-            glLightfv(GL_LIGHT0 + target, GL_AMBIENT, ambient);
+            vsglLightfv(GL_LIGHT0 + target, GL_AMBIENT, ambient);
             break;
         case POSITION:
             vect[0] = color.r;
@@ -456,9 +457,9 @@ void gfx_light::ResetProperties(const enum LIGHT_TARGET light_targ, const GFXCol
                 break;
             }
             SendGLPosition(GL_LIGHT0 + target);
-            glLightf(GL_LIGHT0 + target, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
-            glLightf(GL_LIGHT0 + target, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
-            glLightf(GL_LIGHT0 + target, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
+            vsglLightf(GL_LIGHT0 + target, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
+            vsglLightf(GL_LIGHT0 + target, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
+            vsglLightf(GL_LIGHT0 + target, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
             break;
     }
 }
@@ -510,9 +511,9 @@ void gfx_light::ResetProperties(const enum LIGHT_TARGET light_target, const Vect
             break;
         }
         SendGLPosition(GL_LIGHT0 + target);
-        glLightf(GL_LIGHT0 + target, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
-        glLightf(GL_LIGHT0 + target, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
-        glLightf(GL_LIGHT0 + target, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
+        vsglLightf(GL_LIGHT0 + target, GL_CONSTANT_ATTENUATION, attenuate[0] * atten0scale);
+        vsglLightf(GL_LIGHT0 + target, GL_LINEAR_ATTENUATION, attenuate[1] * atten1scale);
+        vsglLightf(GL_LIGHT0 + target, GL_QUADRATIC_ATTENUATION, attenuate[2] * atten2scale);
         break;
     }
 }
@@ -584,7 +585,7 @@ void gfx_light::Enable() {
                 _GLLightsEnabled++;
                 ClobberGLLight(newtarg);
             }
-            glEnable(GL_LIGHT0 + this->target);
+            vsglEnable(GL_LIGHT0 + this->target);
             GLLights[this->target].options |= OpenGLL::GL_ENABLED | OpenGLL::GLL_ON;
         }
         enable();
@@ -598,7 +599,7 @@ void gfx_light::Disable() {
         if (target >= 0) {
             if (GLLights[target].options & OpenGLL::GL_ENABLED) {
                 _GLLightsEnabled--;
-                glDisable(GL_LIGHT0 + this->target);
+                vsglDisable(GL_LIGHT0 + this->target);
             }
             GLLights[this->target].options &= (~(OpenGLL::GL_ENABLED | OpenGLL::GLL_ON));
         }
@@ -653,12 +654,12 @@ void light_rekey_frame() {
                     if ((*_llights)[li].enabled() && ((*_llights)[li].Target() == -1)) {
                         (*_llights)[li].ClobberGLLight(i);
                     } else {
-                        glDisable(GL_LIGHT0 + i);
+                        vsglDisable(GL_LIGHT0 + i);
                         GLLights[i].index = -1;
                     }
                 }
             } else {
-                glDisable(GL_LIGHT0 + i);
+                vsglDisable(GL_LIGHT0 + i);
                 GLLights[i].options &= (~OpenGLL::GL_ENABLED);
             }
         }

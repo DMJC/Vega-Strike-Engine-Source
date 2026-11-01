@@ -59,7 +59,8 @@ static float s_pending_font_size = 0.0f;
 static std::string s_pending_font_file;
 static bool s_font_file_pending = false;
 
-void InitGui(SDL_Window *window, const SDL_GLContext *context, const float fontSize, const char *fontFile) {
+void InitGui(SDL_Window *window, const SDL_GLContext *context, const float fontSize, const char *fontFile,
+        const char *glslVersion) {
     current_window = window;
     SDL_GLContext gl_context = *context;
 
@@ -68,8 +69,7 @@ void InitGui(SDL_Window *window, const SDL_GLContext *context, const float fontS
     ImGui::CreateContext();
     
     ImGui_ImplSDL3_InitForOpenGL(current_window, gl_context);
-    const char* glsl_version = "#version 130";
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();

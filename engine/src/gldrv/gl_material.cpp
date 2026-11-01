@@ -27,6 +27,7 @@
 
 #include "src/gfxlib.h"
 #include "gl_globals.h"
+#include "gl_ffp_compat.h"
 #include <cstring>
 //#include "gl_globals.h"
 //#include "gfx_transform_vector.h"
@@ -76,27 +77,27 @@ void /*GFXDRVAPI*/ GFXSelectMaterialAlpha(const unsigned int number, float alpha
     matvect[1] = materialinfo[number].ag;
     matvect[2] = materialinfo[number].ab;
     matvect[3] = materialinfo[number].aa * alpha;
-    glMaterialfv(GL_FRONT, GL_AMBIENT, matvect);
+    vsglMaterialfv(GL_FRONT, GL_AMBIENT, matvect);
 
     matvect[0] = materialinfo[number].dr;
     matvect[1] = materialinfo[number].dg;
     matvect[2] = materialinfo[number].db;
     matvect[3] = materialinfo[number].da * alpha;
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, matvect);
+    vsglMaterialfv(GL_FRONT, GL_DIFFUSE, matvect);
 
     matvect[0] = materialinfo[number].sr;
     matvect[1] = materialinfo[number].sg;
     matvect[2] = materialinfo[number].sb;
     matvect[3] = materialinfo[number].sa * alpha;
-    glMaterialfv(GL_FRONT, GL_SPECULAR, matvect);
+    vsglMaterialfv(GL_FRONT, GL_SPECULAR, matvect);
 
     matvect[0] = materialinfo[number].er;
     matvect[1] = materialinfo[number].eg;
     matvect[2] = materialinfo[number].eb;
     matvect[3] = materialinfo[number].ea * alpha;
-    glMaterialfv(GL_FRONT, GL_EMISSION, matvect);
+    vsglMaterialfv(GL_FRONT, GL_EMISSION, matvect);
 
-    glMaterialfv(GL_FRONT, GL_SHININESS, &materialinfo[number].power);
+    vsglMaterialfv(GL_FRONT, GL_SHININESS, &materialinfo[number].power);
 }
 
 const float zerovect[4] = {0.0};
@@ -112,27 +113,27 @@ void /*GFXDRVAPI*/ GFXSelectMaterialHighlights(const unsigned int number,
     matvect[1] = materialinfo[number].ag * ambient.g * ambient.a;
     matvect[2] = materialinfo[number].ab * ambient.b * ambient.a;
     matvect[3] = materialinfo[number].aa * ambient.a;
-    glMaterialfv(GL_FRONT, GL_AMBIENT, matvect);
+    vsglMaterialfv(GL_FRONT, GL_AMBIENT, matvect);
 
     matvect[0] = materialinfo[number].dr * diffuse.r * diffuse.a;
     matvect[1] = materialinfo[number].dg * diffuse.g * diffuse.a;
     matvect[2] = materialinfo[number].db * diffuse.b * diffuse.a;
     matvect[3] = materialinfo[number].da * diffuse.a;
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, matvect);
+    vsglMaterialfv(GL_FRONT, GL_DIFFUSE, matvect);
 
     matvect[0] = materialinfo[number].sr * specular.r * specular.a;
     matvect[1] = materialinfo[number].sg * specular.g * specular.a;
     matvect[2] = materialinfo[number].sb * specular.b * specular.a;
     matvect[3] = materialinfo[number].sa * specular.a;
-    glMaterialfv(GL_FRONT, GL_SPECULAR, matvect);
+    vsglMaterialfv(GL_FRONT, GL_SPECULAR, matvect);
 
     matvect[0] = emissive.r * emissive.a;
     matvect[1] = emissive.g * emissive.a;
     matvect[2] = emissive.b * emissive.a;
     matvect[3] = emissive.a;
-    glMaterialfv(GL_FRONT, GL_EMISSION, matvect);
+    vsglMaterialfv(GL_FRONT, GL_EMISSION, matvect);
 
-    glMaterialfv(GL_FRONT, GL_SHININESS, &materialinfo[number].power);
+    vsglMaterialfv(GL_FRONT, GL_SHININESS, &materialinfo[number].power);
 }
 
 void /*GFXDRVAPI*/ GFXSelectMaterial(const unsigned int number) {
@@ -142,27 +143,27 @@ void /*GFXDRVAPI*/ GFXSelectMaterial(const unsigned int number) {
         matvect[1] = materialinfo[number].ag;
         matvect[2] = materialinfo[number].ab;
         matvect[3] = materialinfo[number].aa;
-        glMaterialfv(GL_FRONT, GL_AMBIENT, matvect);
+        vsglMaterialfv(GL_FRONT, GL_AMBIENT, matvect);
 
         matvect[0] = materialinfo[number].dr;
         matvect[1] = materialinfo[number].dg;
         matvect[2] = materialinfo[number].db;
         matvect[3] = materialinfo[number].da;
-        glMaterialfv(GL_FRONT, GL_DIFFUSE, matvect);
+        vsglMaterialfv(GL_FRONT, GL_DIFFUSE, matvect);
 
         matvect[0] = materialinfo[number].sr;
         matvect[1] = materialinfo[number].sg;
         matvect[2] = materialinfo[number].sb;
         matvect[3] = materialinfo[number].sa;
-        glMaterialfv(GL_FRONT, GL_SPECULAR, matvect);
+        vsglMaterialfv(GL_FRONT, GL_SPECULAR, matvect);
 
         matvect[0] = materialinfo[number].er;
         matvect[1] = materialinfo[number].eg;
         matvect[2] = materialinfo[number].eb;
         matvect[3] = materialinfo[number].ea;
-        glMaterialfv(GL_FRONT, GL_EMISSION, matvect);
+        vsglMaterialfv(GL_FRONT, GL_EMISSION, matvect);
 
-        glMaterialfv(GL_FRONT, GL_SHININESS, &materialinfo[number].power);
+        vsglMaterialfv(GL_FRONT, GL_SHININESS, &materialinfo[number].power);
         selectedmaterial = number;
     }
 }

@@ -29,6 +29,9 @@
 #include "src/gfxlib_struct.h"
 #include "src/gfxlib.h"
 #include "gldrv/gl_globals.h"
+#include "gldrv/gl_primitives.h"
+#include "gldrv/gl_renderer.h"
+#include "gldrv/gl_shader_translate.h"
 #include <stdio.h>
 #include "root_generic/xml_support.h"
 #include "src/config_xml.h"
@@ -39,6 +42,8 @@
 
 #include "root_generic/options.h"
 
+#include <cstddef>
+#include <cstring>
 #include <vector>
 
 #include "configuration/configuration.h"
@@ -63,227 +68,131 @@ GFXColor::operator ImU32() const {
 }
 
 
+// The core-profile primitive mapping in gldrv/gl_primitives.h mirrors POLYTYPE
+static_assert(static_cast<int>(vsgl::PolyType::Tri) == GFXTRI, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::Quad) == GFXQUAD, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::Line) == GFXLINE, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::TriStrip) == GFXTRISTRIP, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::QuadStrip) == GFXQUADSTRIP, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::TriFan) == GFXTRIFAN, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::LineStrip) == GFXLINESTRIP, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::Poly) == GFXPOLY, "POLYTYPE mismatch");
+static_assert(static_cast<int>(vsgl::PolyType::Point) == GFXPOINT, "POLYTYPE mismatch");
+
+/// The core-profile GL primitive a POLYTYPE is drawn with (quads become triangles)
 GLenum PolyLookup(POLYTYPE poly) {
-    switch (poly) {
-        case GFXTRI:
-            return GL_TRIANGLES;
-
-        case GFXQUAD:
-            return GL_QUADS;
-
-        case GFXTRISTRIP:
-            return GL_TRIANGLE_STRIP;
-
-        case GFXQUADSTRIP:
-            return GL_QUAD_STRIP;
-
-        case GFXTRIFAN:
-            return GL_TRIANGLE_FAN;
-
-        case GFXPOLY:
-            return GL_POLYGON;
-
-        case GFXLINE:
-            return GL_LINES;
-
-        case GFXLINESTRIP:
-            return GL_LINE_STRIP;
-
-        case GFXPOINT:
-            return GL_POINTS;
-
-        default:
-            return GL_TRIANGLES;
-    }
+    return vsgl::PrimitiveToGL(vsgl::MapPolyType(static_cast<vsgl::PolyType>(poly)).primitive);
 }
 
-static void clear_gl_error() {
-    glGetError();
+static int IndexSize(char changed) {
+    return (changed & INDEX_BYTE) ? 1 : ((changed & INDEX_SHORT) ? 2 : ((changed & INDEX_INT) ? 4 : 0));
 }
 
-static void print_gl_error(const char *fmt) {
-    GLenum gl_error = glGetError();
-    if (!!gl_error) {
-        VS_LOG(error, (boost::format(fmt) % gl_error));
-    }
-}
-
-static void EnableArrays(const GFXColorVertex *data) {
-    if (gl_options.Multitexture) {
-        glClientActiveTextureARB_p(GL_TEXTURE0);
-    }
-    glInterleavedArrays(GL_T2F_C4F_N3F_V3F, sizeof(GFXColorVertex), data);
-    if (gl_options.Multitexture) {
-        glClientActiveTextureARB_p(GL_TEXTURE1);
-        glTexCoordPointer(2, GL_FLOAT, sizeof(GFXColorVertex), &data[0].s);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glClientActiveTextureARB_p(GL_TEXTURE2);
-        glTexCoordPointer(4, GL_FLOAT, sizeof(GFXColorVertex), &data[0].tx);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glClientActiveTextureARB_p(GL_TEXTURE0);
-    }
-}
-
-static void EnableArrays(const GFXVertex *data) {
-    if (gl_options.Multitexture) {
-        glClientActiveTextureARB_p(GL_TEXTURE0);
-    }
-    glInterleavedArrays(GL_T2F_N3F_V3F, sizeof(GFXVertex), data);
-    if (gl_options.Multitexture) {
-        glClientActiveTextureARB_p(GL_TEXTURE1);
-        glTexCoordPointer(2, GL_FLOAT, sizeof(GFXVertex), &data[0].s);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glClientActiveTextureARB_p(GL_TEXTURE2);
-        glTexCoordPointer(4, GL_FLOAT, sizeof(GFXVertex), &data[0].tx);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glClientActiveTextureARB_p(GL_TEXTURE0);
+/// Points the bound VAO at an interleaved GFXVertex / GFXColorVertex array in the bound VBO
+template<typename V>
+static void SetVertexAttributes(bool color) {
+    const GLsizei stride = sizeof(V);
+    auto attrib = [stride](GLuint index, GLint size, size_t offset) {
+        (*glVertexAttribPointer_p)(index, size, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid *>(offset));
+        (*glEnableVertexAttribArray_p)(index);
+    };
+    attrib(vsgl::kAttribVertex, 3, offsetof(V, x));
+    attrib(vsgl::kAttribNormal, 3, offsetof(V, i));
+    // Same texture coordinate assignment as the old client arrays: the
+    // texcoords on units 0 and 1, the tangent on unit 2
+    attrib(vsgl::kAttribMultiTexCoord0, 2, offsetof(V, s));
+    attrib(vsgl::kAttribMultiTexCoord0 + 1, 2, offsetof(V, s));
+    attrib(vsgl::kAttribMultiTexCoord0 + 2, 4, offsetof(V, tx));
+    if (color) {
+        attrib(vsgl::kAttribColor, 4, offsetof(GFXColorVertex, r));
+    } else {
+        (*glDisableVertexAttribArray_p)(vsgl::kAttribColor);
     }
 }
 
 void GFXVertexList::RefreshDisplayList() {
-#ifndef NO_VBO_SUPPORT
-    if (configuration().graphics.vbo && !vbo_data) {
-        if (glGenBuffersARB_p == nullptr || glBindBufferARB_p == nullptr || glBufferDataARB_p == nullptr || glMapBufferARB_p == nullptr
-                || glUnmapBufferARB_p == nullptr) {
-            (configuration()).graphics.vbo = false;
+    if (vertex_array == 0) {
+        (*glGenVertexArrays_p)(1, &vertex_array);
+    }
+    if (vbo_data == 0) {
+        (*glGenBuffersARB_p)(1, (GLuint *) &vbo_data);
+    }
+    (*glBindVertexArray_p)(vertex_array);
+
+    const bool color = (changed & HAS_COLOR) != 0;
+    const size_t vertex_size = color ? sizeof(GFXColorVertex) : sizeof(GFXVertex);
+    const GLenum usage = (changed & CHANGE_MUTABLE) ? GL_DYNAMIC_DRAW_ARB : GL_STATIC_DRAW_ARB;
+    GFXBindBuffer(vbo_data);
+    if (numVertices > 0) {
+        if (numVertices == vbo_capacity) {
+            (*glBufferSubData_p)(GL_ARRAY_BUFFER_ARB, 0, numVertices * vertex_size, data.vertices);
         } else {
-            (*glGenBuffersARB_p)(1, (GLuint *) &vbo_data);
-            if (changed & HAS_INDEX) {
-                (*glGenBuffersARB_p)(1, (GLuint *) &display_list);
-            }
+            (*glBufferDataARB_p)(GL_ARRAY_BUFFER_ARB, numVertices * vertex_size, data.vertices, usage);
+            vbo_capacity = numVertices;
         }
     }
-    if (vbo_data) {
-        GFXBindBuffer(vbo_data);
-        (*glBufferDataARB_p)(GL_ARRAY_BUFFER_ARB, numVertices
-                        * ((changed & HAS_COLOR) ? sizeof(GFXColorVertex) : sizeof(GFXVertex)), data.vertices,
-                (changed & CHANGE_MUTABLE) ? GL_DYNAMIC_DRAW_ARB : GL_STATIC_DRAW_ARB);
-        if (changed & HAS_INDEX) {
-            GFXBindElementBuffer(display_list);
-            uintmax_t tot = 0;
-            for (int i = 0; i < numlists; ++i) {
-                tot += offsets[i];
-            }
-            const uintmax_t index_size = (changed & INDEX_BYTE)
-                    ? sizeof(char)
-                    : ((changed & INDEX_SHORT)
-                            ? sizeof(unsigned short)
-                            : sizeof(unsigned int));
-            (*glBufferDataARB_p)(GL_ELEMENT_ARRAY_BUFFER_ARB, tot * index_size, &index.b[0],
-                    (changed & CHANGE_MUTABLE) ? GL_DYNAMIC_DRAW_ARB : GL_STATIC_DRAW_ARB);
-        }
-        return;
-    }
-#endif
-    if ((!gl_options.display_lists) || (display_list && !(changed & CHANGE_CHANGE)) || (changed & CHANGE_MUTABLE)) {
-        return;
-    }          //don't used lists if they're mutable
-    if (display_list) {
-        GFXDeleteList(display_list);
-    }
-    int offset = 0;
-    display_list = GFXCreateList();
-    if (changed & HAS_COLOR) {
-        EnableArrays(data.colors);
+    if (color) {
+        SetVertexAttributes<GFXColorVertex>(true);
     } else {
-        EnableArrays(data.vertices);
+        SetVertexAttributes<GFXVertex>(false);
     }
-    for (int i = 0; i < numlists; i++) {
-        // Populate the display list with array data
-        if (changed & HAS_INDEX) {
-            switch (changed & (INDEX_BYTE | INDEX_INT | INDEX_SHORT)) {
-                case INDEX_BYTE:
-                    glDrawElements(PolyLookup(mode[i]), offsets[i], GL_UNSIGNED_BYTE, index.b);
-                    break;
-                case INDEX_SHORT:
-                    glDrawElements(PolyLookup(mode[i]), offsets[i], GL_UNSIGNED_SHORT, index.s);
-                    break;
-                case INDEX_INT:
-                    glDrawElements(PolyLookup(mode[i]), offsets[i], GL_UNSIGNED_INT, index.i);
-                    break;
-                default:
-                    break;
-            }
-        } else {
-            glDrawArrays(PolyLookup(mode[i]), offset, offsets[i]);
+
+    // Work out the core-profile draws once; quads get indices of their own
+    const int index_size = IndexSize(changed);
+    const void *indices = (index_size != 0) ? static_cast<const void *>(index.b) : nullptr;
+    std::vector<vsgl::PolyType> types(numlists);
+    for (int i = 0; i < numlists; ++i) {
+        types[i] = static_cast<vsgl::PolyType>(mode[i]);
+    }
+    if (draw_plan == nullptr) {
+        draw_plan = new vsgl::DrawPlan;
+    }
+    *draw_plan = vsgl::BuildDrawPlan(numlists > 0 ? &types[0] : nullptr, offsets, numlists, indices, index_size);
+
+    const void *element_data = nullptr;
+    size_t element_bytes = 0;
+    if (!draw_plan->indices.empty()) {
+        element_data = &draw_plan->indices[0];
+        element_bytes = draw_plan->indices.size() * sizeof(uint32_t);
+    } else if (indices != nullptr) {
+        size_t total = 0;
+        for (int i = 0; i < numlists; ++i) {
+            total += offsets[i];
         }
-        offset += offsets[i];
+        element_data = indices;
+        element_bytes = total * index_size;
     }
-    if (!GFXEndList()) {
-        GFXDeleteList(display_list);
-        display_list = 0;
+    if (element_bytes > 0) {
+        if (display_list == 0) {
+            (*glGenBuffersARB_p)(1, (GLuint *) &display_list);
+        }
+        vsgl::BindElementBuffer(display_list);
+        (*glBufferDataARB_p)(GL_ELEMENT_ARRAY_BUFFER_ARB, element_bytes, element_data, usage);
+    } else {
+        vsgl::BindElementBuffer(0);
     }
+    // The rebuilt or generated indices are now on the GPU
+    draw_plan->indices.clear();
+    draw_plan->indices.shrink_to_fit();
 }
 
 void GFXVertexList::BeginDrawState(GFXBOOL lock) {
     if (!numVertices) {
         return;
     }          //don't do anything if there are no vertices
-
-#ifndef NO_VBO_SUPPORT
-    if (vbo_data) {
-        clear_gl_error();
-
-        GFXBindBuffer(vbo_data);
-        print_gl_error("VBO18.5a Error %1%");
-
-        if (changed & HAS_INDEX) {
-            GFXBindElementBuffer(display_list);
-            print_gl_error("VBO18.5b Error %1%");
-        }
-
-        if (changed & HAS_COLOR) {
-            EnableArrays((GFXColorVertex *) NULL);
-        } else {
-            EnableArrays((GFXVertex *) NULL);
-        }
-    } else
-#endif
-    if (display_list == 0) {
-        if (changed & HAS_COLOR) {
-            EnableArrays(data.colors);
-        } else {
-            EnableArrays(data.vertices);
-        }
-#ifndef NO_COMPILEDVERTEXARRAY_SUPPORT
-        if (lock && glLockArraysEXT_p) {
-            (*glLockArraysEXT_p)(0, numVertices);
-        }
-#endif
+    if (vertex_array == 0) {
+        RefreshDisplayList();
     }
+    (*glBindVertexArray_p)(vertex_array);
 }
 
 extern void /*GFXDRVAPI*/ GFXColor4f(const float r, const float g, const float b, const float a);
 
 void GFXVertexList::EndDrawState(GFXBOOL lock) {
-    if (vbo_data) {
-#ifndef NO_VBO_SUPPORT
-        if (gl_options.Multitexture) {
-            glClientActiveTextureARB_p(GL_TEXTURE0);
-            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-            glClientActiveTextureARB_p(GL_TEXTURE1);
-            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-            glClientActiveTextureARB_p(GL_TEXTURE2);
-            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-            glClientActiveTextureARB_p(GL_TEXTURE0);
-        } else {
-            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-        }
-#endif
-    } else if (display_list != 0) {
-    } else {
-#ifndef NO_COMPILEDVERTEXARRAY_SUPPORT
-        if (lock && glUnlockArraysEXT_p && numVertices) {
-            (*glUnlockArraysEXT_p)();
-        }
-#endif
-    }
     if (changed & HAS_COLOR) {
         GFXColor4f(1, 1, 1, 1);
     }
 }
-
-extern GLenum PolyLookup(POLYTYPE poly);
 
 void GFXVertexList::Draw(enum POLYTYPE poly, int numV) {
     INDEX index;
@@ -329,220 +238,95 @@ void GFXVertexList::Draw() {
     Draw(mode, index, numlists, offsets);
 }
 
-extern void GFXCallList(int list);
-
 void GFXVertexList::Draw(enum POLYTYPE *mode, const INDEX index, const int numlists, const int *offsets) {
-    //Hardware support for this seems... sketchy
-    if (vbo_data == 0 && display_list != 0) {
-        //Big issue: display lists cannot discriminate between lines/points/triangles,
-        //so, for now, we'll limit smoothing to single-mode GFXVertexLists, which, by the way,
-        //are the only ones being used, AFAIK.
-        bool blendchange = false;
-        if (unique_mode && (numlists > 0)) {
-            switch (*mode) {
-                case GFXLINE:
-                case GFXLINESTRIP:
-                case GFXPOLY:
-                case GFXPOINT:
-                    if (((*mode == GFXPOINT)
-                            && configuration().graphics.smooth_points) || ((*mode != GFXPOINT) && configuration().graphics.smooth_lines)) {
-                        BLENDFUNC src, dst;
-                        GFXGetBlendMode(src, dst);
-                        if ((dst != ZERO) && ((src == ONE) || (src == SRCALPHA))) {
-                            GFXPushBlendMode();
-                            GFXBlendMode(SRCALPHA, dst);
-                            GFXEnable(SMOOTH);
-                            blendchange = true;
-                        }
+    if (vertex_array == 0 || numlists <= 0) {
+        return;
+    }
+    // Smooth points and lines need alpha blending to show their antialiasing
+    bool blendchange = false;
+    bool same_mode = true;
+    for (int i = 1; i < numlists; ++i) {
+        same_mode = same_mode && mode[i] == mode[0];
+    }
+    if (same_mode) {
+        switch (mode[0]) {
+            case GFXLINE:
+            case GFXLINESTRIP:
+            case GFXPOLY:
+            case GFXPOINT:
+                if (((mode[0] == GFXPOINT) && configuration().graphics.smooth_points)
+                        || ((mode[0] != GFXPOINT) && configuration().graphics.smooth_lines)) {
+                    BLENDFUNC src, dst;
+                    GFXGetBlendMode(src, dst);
+                    if ((dst != ZERO) && ((src == ONE) || (src == SRCALPHA))) {
+                        GFXPushBlendMode();
+                        GFXBlendMode(SRCALPHA, dst);
+                        GFXEnable(SMOOTH);
+                        blendchange = true;
                     }
-                    break;
-                default:
-                    break;
-            }
+                }
+                break;
+            default:
+                break;
         }
-        GFXCallList(display_list);
-        if (blendchange) {
-            GFXPopBlendMode();
-            GFXDisable(SMOOTH);
-        }
+    }
 
-        ++gl_batches_this_frame;
+    const vsgl::Primitive primitive = vsgl::MapPolyType(static_cast<vsgl::PolyType>(mode[0])).primitive;
+    const bool own_lists = mode == this->mode && offsets == this->offsets && numlists == this->numlists
+            && memcmp(&index, &this->index, sizeof(INDEX)) == 0;
+    (*glBindVertexArray_p)(vertex_array);
+    if (own_lists && draw_plan != nullptr) {
+        vsgl::PrepareDraw(primitive, (changed & HAS_COLOR) != 0);
+        vsgl::DrawCommands(draw_plan->commands, 0);
     } else {
-        uint64_t totoffset = 0;
-        if (changed & HAS_INDEX) {
-            const uint64_t stride = changed & HAS_INDEX;
-            const GLenum indextype = (changed & INDEX_BYTE)
-                    ? GL_UNSIGNED_BYTE
-                    : ((changed & INDEX_SHORT)
-                            ? GL_UNSIGNED_SHORT
-                            : GL_UNSIGNED_INT);
-            bool use_vbo = vbo_data != 0;
-            use_vbo = use_vbo && memcmp(&index, &this->index, sizeof(INDEX)) == 0;
-            if (use_vbo) {
-                #ifndef NO_VBO_SUPPORT
-                GFXBindElementBuffer(display_list);
-                #else
-                use_vbo = false;
-                #endif
-            } else {
-                #ifndef NO_VBO_SUPPORT
-                if (vbo_data) {
-                    GFXBindElementBuffer(0);
-                }
-                #endif
-            }
-            if (glMultiDrawElements_p != nullptr && numlists > 1) {
-                static std::vector<bool> drawn;
-                static std::vector<const GLvoid *> glindices;
-                static std::vector<GLsizei> glcounts;
-
-                drawn.clear();
-                drawn.resize(numlists, false);
-                for (int i = 0; i < numlists; totoffset += offsets[i++]) {
-                    if (!drawn[i]) {
-                        glindices.clear();
-                        glcounts.clear();
-                        int totcount = 0;
-                        for (uint64_t j = i, offs = totoffset; j < numlists; offs += offsets[j++]) {
-                            totcount += offsets[j];
-                            if (!drawn[j] && (mode[j] == mode[i])) {
-                                glindices.push_back(use_vbo ? reinterpret_cast<GLvoid *>(stride * offs)
-                                        : static_cast<GLvoid *>(&index.b[stride * offs]));
-                                glcounts.push_back(offsets[j]);
-                                drawn[j] = true;
-                            }
-                        }
-                        if (glindices.size() == 1) {
-                            glDrawElements(PolyLookup(mode[i]), glcounts[0], indextype, glindices[0]);
-                        } else {
-                            glMultiDrawElements_p(PolyLookup(
-                                    mode[i]), &glcounts[0], indextype, &glindices[0], glindices.size());
-                        }
-                        ++gl_batches_this_frame;
-                        gl_vertices_this_frame += totcount;
-                    }
-                }
-            } else {
-                for (int i = 0; i < numlists; i++) {
-                    glDrawElements(PolyLookup(mode[i]), offsets[i], indextype,
-                            use_vbo ? reinterpret_cast<GLvoid *>(stride * totoffset)
-                                    : static_cast<GLvoid *>(&index.b[stride
-                                                                     * totoffset]));                     //changed&INDEX_BYTE == stride!
-                    totoffset += offsets[i];
-                    ++gl_batches_this_frame;
-                    gl_vertices_this_frame += offsets[i];
-                }
-            }
-        } else {
-            if (glMultiDrawArrays_p) {
-                static std::vector<bool> drawn;
-                static std::vector<GLint> gloffsets;
-                static std::vector<GLsizei> glcounts;
-
-                drawn.clear();
-                drawn.resize(numlists, false);
-                for (int i = 0; i < numlists; totoffset += offsets[i++]) {
-                    if (!drawn[i]) {
-                        gloffsets.clear();
-                        glcounts.clear();
-                        int totcount = 0;
-                        for (int j = i, offs = totoffset; j < numlists; offs += offsets[j++]) {
-                            totcount += offsets[j];
-                            if (!drawn[j] && (mode[j] == mode[i])) {
-                                gloffsets.push_back(offs);
-                                glcounts.push_back(offsets[j]);
-                                drawn[j] = true;
-                            }
-                        }
-                        bool blendchange = false;
-                        switch (mode[i]) {
-                            case GFXLINE:
-                            case GFXLINESTRIP:
-                            case GFXPOLY:
-                            case GFXPOINT:
-                                if (((mode[i] == GFXPOINT)
-                                        && configuration().graphics.smooth_points)
-                                        || ((mode[i] != GFXPOINT) && configuration().graphics.smooth_lines)) {
-                                    BLENDFUNC src, dst;
-                                    GFXGetBlendMode(src, dst);
-                                    if ((dst != ZERO) && ((src == ONE) || (src == SRCALPHA))) {
-                                        GFXPushBlendMode();
-                                        GFXBlendMode(SRCALPHA, dst);
-                                        GFXEnable(SMOOTH);
-                                        blendchange = true;
-                                    }
-                                }
-                                break;
-                            default:
-                                break;
-                        }
-                        if (gloffsets.size() == 1) {
-                            glDrawArrays(PolyLookup(mode[i]), gloffsets[0], glcounts[0]);
-                        } else {
-                            glMultiDrawArrays_p(PolyLookup(mode[i]), &gloffsets[0], &glcounts[0], gloffsets.size());
-                        }
-                        if (blendchange) {
-                            GFXPopBlendMode();
-                            GFXDisable(SMOOTH);
-                        }
-                        ++gl_batches_this_frame;
-                        gl_vertices_this_frame += totcount;
-                    }
-                }
-            } else {
-                for (int i = 0; i < numlists; i++) {
-                    bool blendchange = false;
-                    switch (mode[i]) {
-                        case GFXLINE:
-                        case GFXLINESTRIP:
-                        case GFXPOLY:
-                        case GFXPOINT:
-                            if (((mode[i] == GFXPOINT)
-                                    && configuration().graphics.smooth_points)
-                                    || ((mode[i] != GFXPOINT) && configuration().graphics.smooth_lines)) {
-                                BLENDFUNC src, dst;
-                                GFXGetBlendMode(src, dst);
-                                if ((dst != ZERO) && ((src == ONE) || (src == SRCALPHA))) {
-                                    GFXPushBlendMode();
-                                    GFXBlendMode(SRCALPHA, dst);
-                                    GFXEnable(SMOOTH);
-                                    blendchange = true;
-                                }
-                            }
-                            break;
-                        default:
-                            break;
-                    }
-                    glDrawArrays(PolyLookup(mode[i]), totoffset, offsets[i]);
-                    totoffset += offsets[i];
-                    if (blendchange) {
-                        GFXPopBlendMode();
-                        GFXDisable(SMOOTH);
-                    }
-                    ++gl_batches_this_frame;
-                    gl_vertices_this_frame += offsets[i];
-                }
-            }
+        // A one-off selection of this list's vertices (e.g. Draw(GFXTRI, n, indices)):
+        // plan it on the spot and stream whatever indices it needs.
+        const int index_size = index.b != nullptr ? IndexSize(changed) : 0;
+        const void *indices = index_size != 0 ? static_cast<const void *>(index.b) : nullptr;
+        std::vector<vsgl::PolyType> types(numlists);
+        size_t total = 0;
+        for (int i = 0; i < numlists; ++i) {
+            types[i] = static_cast<vsgl::PolyType>(mode[i]);
+            total += offsets[i];
         }
+        const vsgl::DrawPlan plan = vsgl::BuildDrawPlan(&types[0], offsets, numlists, indices, index_size);
+        size_t index_base = 0;
+        if (!plan.indices.empty()) {
+            index_base = vsgl::StreamIndexData(&plan.indices[0], plan.indices.size() * sizeof(uint32_t));
+        } else if (indices != nullptr) {
+            index_base = vsgl::StreamIndexData(indices, total * index_size);
+        }
+        vsgl::PrepareDraw(primitive, (changed & HAS_COLOR) != 0);
+        vsgl::DrawCommands(plan.commands, index_base);
+        // Put this list's own element buffer back into its vertex array
+        vsgl::BindElementBuffer(display_list);
+    }
+
+    if (blendchange) {
+        GFXPopBlendMode();
+        GFXDisable(SMOOTH);
     }
 }
 
 GFXVertexList::~GFXVertexList() {
-// #ifndef NO_VBO_SUPPORT
-//     if (vbo_data) {
-//         (*glDeleteBuffersARB_p)(1, (GLuint*) &vbo_data);
-//         if (display_list) {
-//             (*glDeleteBuffersARB_p)(1, (GLuint*) &display_list);
-//         }
-//     } else
-// #endif
+    if (vertex_array != 0) {
+        (*glDeleteVertexArrays_p)(1, &vertex_array);
+        vertex_array = 0;
+    }
+    if (vbo_data != 0) {
+        GFXForgetBuffer(vbo_data);
+        (*glDeleteBuffersARB_p)(1, (GLuint *) &vbo_data);
+        vbo_data = 0;
+    }
+    if (display_list != 0) {
+        (*glDeleteBuffersARB_p)(1, (GLuint *) &display_list);
+        display_list = 0;
+    }
+    delete draw_plan;
+    draw_plan = nullptr;
     if (vbo_elements != nullptr) {
         (*glDeleteBuffersARB_p)(1, vbo_elements);
         vbo_elements = nullptr;
-    }
-    if (display_list != 0) {
-        GFXDeleteList(display_list);          //delete dis
-        display_list = 0;
     }
     if (offsets != nullptr) {
         delete[] offsets;
@@ -564,50 +348,12 @@ GFXVertexList::~GFXVertexList() {
 }
 
 union GFXVertexList::VDAT *GFXVertexList::Map(bool read, bool write) {
-#ifndef NO_VBO_SUPPORT
-    if (GFX_BUFFER_MAP_UNMAP) {
-        if (vbo_data) {
-            if (display_list) {
-                GFXBindElementBuffer(display_list);
-                index.b =
-                        (unsigned char *) (*glMapBufferARB_p)(GL_ELEMENT_ARRAY_BUFFER_ARB,
-                                read ? (write ? GL_READ_WRITE_ARB : GL_READ_ONLY_ARB)
-                                        : GL_WRITE_ONLY_ARB);
-            }
-            GFXBindBuffer(vbo_data);
-            void *ret =
-                    (*glMapBufferARB_p)(GL_ARRAY_BUFFER_ARB,
-                            read ? (write ? GL_READ_WRITE_ARB : GL_READ_ONLY_ARB) : GL_WRITE_ONLY_ARB);
-            if (changed & HAS_COLOR) {
-                data.colors = (GFXColorVertex *) ret;
-            } else {
-                data.vertices = (GFXVertex *) ret;
-            }
-        }
-    }
-
-#endif
-
+    // The vertices are always kept in client memory as well (the buffer
+    // object is a copy), so mapping just exposes them.
     return &data;
 }
 
 void GFXVertexList::UnMap() {
-#ifndef NO_VBO_SUPPORT
-    if (GFX_BUFFER_MAP_UNMAP) {
-        if (vbo_data) {
-            if (display_list) {
-                GFXBindElementBuffer(display_list);
-                (*glUnmapBufferARB_p)(GL_ELEMENT_ARRAY_BUFFER_ARB);
-            }
-            GFXBindBuffer(vbo_data);
-            (*glUnmapBufferARB_p)(GL_ARRAY_BUFFER_ARB);
-            data.colors = NULL;
-            data.vertices = NULL;
-        }
-    }
-
-#endif
-
 }
 
 ///Returns the array of vertices to be mutated

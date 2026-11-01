@@ -25,6 +25,7 @@
  * along with Vega Strike.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include "gl_globals.h"
+#include "gl_ffp_compat.h"
 #include "src/gfxlib.h"
 #include "gfx_generic/vec.h"
 #include <stdio.h>
@@ -100,8 +101,8 @@ inline void ViewToModel() {
     t[14] = (model.p.k - view.p.k) * GFX_SCALE;
     t[15] = 1;
     //MatrixToDoubles (t,model);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadMatrixd(t);
+    vsglMatrixMode(GL_MODELVIEW);
+    vsglLoadMatrixd(t);
 }
 
 static void IdentityFloat(float id[]) {
@@ -156,16 +157,16 @@ static void RotateFloatMatrix(float dest[], const float m1[], const Matrix &m2) 
 void ConstructAndLoadProjection() {
     float t[16];
     RotateFloatMatrix(t, projection, view);
-    glMatrixMode(GL_PROJECTION);
-    glLoadMatrixf(t);
+    vsglMatrixMode(GL_PROJECTION);
+    vsglLoadMatrixf(t);
 }
 
 void /*GLDRVAPI*/ GFXTranslateView(const QVector &a) {
     view.p += TransformNormal(view, a);
-    //glPopMatrix();
-    //glLoadIdentity();
-    //glTranslatef(-view[12],-view[13],-view[14]);
-    //glPushMatrix();
+    //vsglPopMatrix();
+    //vsglLoadIdentity();
+    //vsglTranslatef(-view[12],-view[13],-view[14]);
+    //vsglPushMatrix();
     ViewToModel();
 }
 
@@ -216,8 +217,8 @@ void /*GFXDRVAPI*/ GFXCenterCamera(bool Enter) {
     if (Enter) {
         tmp = view.p;
         view.p.Set(0, 0, 0);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
+        vsglMatrixMode(GL_MODELVIEW);
+        vsglLoadIdentity();
     } else {
         view.p = tmp;
         GFXLoadIdentity(MODEL);
@@ -225,25 +226,25 @@ void /*GFXDRVAPI*/ GFXCenterCamera(bool Enter) {
 }
 
 void GFXRestoreHudMode() {
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
+    vsglMatrixMode(GL_MODELVIEW);
+    vsglLoadIdentity();
+    vsglMatrixMode(GL_PROJECTION);
+    vsglLoadIdentity();
 }
 
 void GFXHudMode(const bool Enter) {
     if (Enter) {
-        glMatrixMode(GL_MODELVIEW);
-        glPushMatrix();
-        glLoadIdentity();
-        glMatrixMode(GL_PROJECTION);
-        glPushMatrix();
-        glLoadIdentity();
+        vsglMatrixMode(GL_MODELVIEW);
+        vsglPushMatrix();
+        vsglLoadIdentity();
+        vsglMatrixMode(GL_PROJECTION);
+        vsglPushMatrix();
+        vsglLoadIdentity();
     } else {
-        glMatrixMode(GL_PROJECTION);
-        glPopMatrix();
-        glMatrixMode(GL_MODELVIEW);
-        glPopMatrix();
+        vsglMatrixMode(GL_PROJECTION);
+        vsglPopMatrix();
+        vsglMatrixMode(GL_MODELVIEW);
+        vsglPopMatrix();
     }
 }
 
@@ -251,11 +252,11 @@ void /*GFXDRVAPI*/ GFXLoadIdentity(const MATRIXMODE mode) {
     switch (mode) {
         case MODEL:
             Identity(model);
-            glMatrixMode(GL_MODELVIEW);
-            //glLoadMatrixf(transview);
-            glLoadIdentity();
-            glTranslated(-view.p.i * GFX_SCALE, -view.p.j * GFX_SCALE, -view.p.k * GFX_SCALE);
-            glScalef(GFX_SCALE, GFX_SCALE, GFX_SCALE);
+            vsglMatrixMode(GL_MODELVIEW);
+            //vsglLoadMatrixf(transview);
+            vsglLoadIdentity();
+            vsglTranslated(-view.p.i * GFX_SCALE, -view.p.j * GFX_SCALE, -view.p.k * GFX_SCALE);
+            vsglScalef(GFX_SCALE, GFX_SCALE, GFX_SCALE);
             break;
         case PROJECTION:
             IdentityFloat(projection);
@@ -264,8 +265,8 @@ void /*GFXDRVAPI*/ GFXLoadIdentity(const MATRIXMODE mode) {
         case VIEW:
             Identity(view);
             ViewToModel();
-            glMatrixMode(GL_PROJECTION);
-            glLoadMatrixf(projection);
+            vsglMatrixMode(GL_PROJECTION);
+            vsglLoadMatrixf(projection);
             break;
     }
 }
@@ -497,13 +498,13 @@ void GFXMultMatrixView( const &Matrix )
     MultMatrix( t, view, matrix );
     CopyMatrix( view, t );
     ConstructAndLoadProjection();
-    glMatrixMode( GL_MODELVIEW );
-    //glPopMatrix();
-    //glLoadIdentity();
-    //glTranslatef(-centerx,-centery,-centerz);
-    //glPushMatrix();
+    vsglMatrixMode( GL_MODELVIEW );
+    //vsglPopMatrix();
+    //vsglLoadIdentity();
+    //vsglTranslatef(-centerx,-centery,-centerz);
+    //vsglPushMatrix();
     ViewToModel( true );
-    glLoadMatrixf( model );
+    vsglLoadMatrixf( model );
     ViewToModel( false );
 }
 #endif
@@ -536,8 +537,8 @@ LOOKATHELPER under MultMatrix( view, m, tm );
 //the axis is the cross product of these two vectors...teh angle is arcsin
 //of the dot of these two vectors
 GFXActiveTexture( 1 );
-glMatrixMode( GL_TEXTURE );
-glLoadIdentity();
+vsglMatrixMode( GL_TEXTURE );
+vsglLoadIdentity();
 #error
 
 //Vector (centerx,centery,centerz).Cross (Vector (1,0,0));  DID NOT TRANSFORM THE ORIENTATION VECTOR TO REVERSE CAMERASPACE
@@ -548,14 +549,14 @@ axis.Normalize();
 //float theta = arcsinf (Vector (centerx,centery,centerz).Normalize().Dot (Vector (1,0,0)));  DID NOT TRANSFORM THE ORIENTATION VECTOR TO REVERSE CAMERASPACE
 float theta = asinf( axis.Dot( cubemapincamspace ) );
 axis = axis.Cross( axis.Cross( cubemapincamspace ) );
-glRotatef( theta, axis.i, axis.j, axis.k );
+vsglRotatef( theta, axis.i, axis.j, axis.k );
 //ok do matrix math to rotate by theta on axis  those ..
 GFXActiveTexture( 0 );
 
 #else
-/*	glTranslatef(.5f,.5f,.4994f);
- *    glMultMatrixf(tm);
- *    glTranslatef(-.5f,-.5f,-.4994f);
+/*	vsglTranslatef(.5f,.5f,.4994f);
+ *    vsglMultMatrixf(tm);
+ *    vsglTranslatef(-.5f,-.5f,-.4994f);
  */
 #endif
 #endif

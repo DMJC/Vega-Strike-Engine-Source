@@ -86,7 +86,7 @@ inline void DrawOneTargetBox( const QVector &Loc,
     // Still locking on
     lock_percent = std::max(0.0F, lock_percent);
     if (lock_percent < 0.99F) {
-        glLineWidth(configuration().graphics.hud.diamond_line_thickness_flt);
+        GFXLineWidth(configuration().graphics.hud.diamond_line_thickness_flt);
 
         if (configuration().graphics.hud.lock_center_crosshair) {
             verts = GetLockingIcon(Loc, CamP, CamQ, rSize, lock_percent);
@@ -594,7 +594,7 @@ void DrawTacticalTargetBox(const Radar::Sensor& sensor)
 
         const float fudge = configuration().graphics.hud.tac_target_length_flt;
         const float foci = configuration().graphics.hud.tac_target_foci_flt;
-        glLineWidth( (int) configuration().graphics.hud.tac_target_thickness_flt);         //temp
+        GFXLineWidth( (int) configuration().graphics.hud.tac_target_thickness_flt);         //temp
         Radar::Track track = sensor.CreateTrack(target, Loc);
         GFXColorf(sensor.GetColor(track));
 
@@ -620,7 +620,7 @@ void DrawTacticalTargetBox(const Radar::Sensor& sensor)
 
         GFXDraw( GFXLINE, verts );
 
-        glLineWidth( (int) 1 );         //temp
+        GFXLineWidth( (int) 1 );         //temp
     }
 }
 

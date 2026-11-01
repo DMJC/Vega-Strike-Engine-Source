@@ -40,6 +40,8 @@
 
 
 #include <cmath>
+#include <cstdlib>
+#include <vector>
 #include <assert.h>
 #include <sstream>
 
@@ -62,6 +64,7 @@
 #include <SDL3/SDL_video.h>
 
 #include "gldrv/mouse_cursor.h"
+#include "gldrv/gl_profile.h"
 #include "backends/imgui_impl_sdl3.h"
 /*
  * Windowing System Abstraction Layer
@@ -78,7 +81,12 @@
 
 static SDL_Window *window = nullptr;
 static SDL_Surface *screen = nullptr;
-static SDL_Renderer *renderer = nullptr;
+// The core profile the context was created with (see setup_sdl_video_mode)
+static vsgl::ContextProfile gl_profile = vsgl::MakeProfile(vsgl::ProfileKind::GL41Core, false);
+
+const vsgl::ContextProfile &winsys_gl_profile() {
+    return gl_profile;
+}
 
 static winsys_display_func_t display_func = nullptr;
 static winsys_idle_func_t idle_func = nullptr;
@@ -343,20 +351,72 @@ bool get_sdl_display_name_by_number(int screen_number, std::string& screen_name,
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "%s", log_msg.c_str());                                                   \
     } while (false)
 
-static bool try_creating_window_and_renderer(const char *title, const int width, const int height,
-                                             const char *render_driver_hint, const Uint32 video_flags,
-                                             SDL_Window **window, SDL_Renderer **renderer) {
-    *window = nullptr;
-    *renderer = nullptr;
+static bool try_creating_window(const char *title, const int width, const int height, const Uint32 video_flags,
+                                SDL_Window **window) {
+    *window = SDL_CreateWindow(title, width, height, video_flags);
+    return *window != nullptr;
+}
 
-    const std::string operation_description = (boost::format("SDL_SetHint(SDL_HINT_RENDER_DRIVER, %1%)") % render_driver_hint).str();
-    if (SDL_SetHint(SDL_HINT_RENDER_DRIVER, render_driver_hint)) {
-        VS_LOG_SDL_SUCCESS(operation_description);
-    } else {
-        VS_LOG_SDL_ERROR(operation_description);
+static bool gl_debug_requested() {
+    const char *debug = std::getenv("VS_GL_DEBUG");
+    return debug != nullptr && debug[0] != '\0' && debug[0] != '0';
+}
+
+static std::vector<vsgl::ContextProfile> gl_profile_candidates() {
+    // VS_GL_PROFILE ("auto", "4.6", "4.1") overrides graphics.gl_profile, e.g. to test the 4.1 path
+    const char *env_profile = std::getenv("VS_GL_PROFILE");
+    const std::string requested = (env_profile != nullptr && env_profile[0] != '\0')
+            ? std::string(env_profile) : configuration().graphics.gl_profile;
+#if defined(__APPLE__) && defined(__MACH__)
+    return vsgl::ProfileCandidates(true, requested);
+#else
+    return vsgl::ProfileCandidates(false, requested);
+#endif
+}
+
+static void set_context_attributes(const vsgl::ContextProfile &profile) {
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, profile.major);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, profile.minor);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    int flags = 0;
+    if (profile.forward_compatible) {
+        flags |= SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG;
     }
+    if (gl_debug_requested() && profile.HasDebugOutput()) {
+        flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, flags);
+}
 
-    return SDL_CreateWindowAndRenderer(title, width, height, video_flags, window, renderer);
+/**
+ * Creates a core-profile context on the window, trying the configured
+ * profile(s) from most to least capable: 4.6 core, then 4.1 core. macOS only
+ * offers forward-compatible 4.1 core contexts.
+ */
+static SDL_GLContext create_core_context(SDL_Window *window) {
+    for (const vsgl::ContextProfile &candidate : gl_profile_candidates()) {
+        set_context_attributes(candidate);
+        SDL_GLContext context = SDL_GL_CreateContext(window);
+        if (context == nullptr) {
+            VS_LOG_AND_FLUSH(warning, (boost::format("Could not create an %1% context: %2%")
+                    % candidate.Name() % SDL_GetError()));
+            SDL_ClearError();
+            continue;
+        }
+        int major = 0, minor = 0;
+        if (!vsgl::ParseGLVersion(reinterpret_cast<const char *>(glGetString(GL_VERSION)), major, minor)
+                || !vsgl::VersionSatisfies(candidate, major, minor)) {
+            VS_LOG_AND_FLUSH(warning, (boost::format("Asked for %1% but the driver returned version %2%")
+                    % candidate.Name() % glGetString(GL_VERSION)));
+            SDL_GL_DestroyContext(context);
+            continue;
+        }
+        gl_profile = candidate;
+        VS_LOG_AND_FLUSH(important_info, (boost::format("Using %1% (driver reports %2%.%3%)")
+                % candidate.Name() % major % minor));
+        return context;
+    }
+    return nullptr;
 }
 
 static bool get_screen_measurements() {
@@ -443,8 +503,8 @@ static bool get_screen_measurements() {
         return false;
     }
 
-    operation_description = (boost::format("SDL_GetRenderOutputSize(%1%, &usable_window_size_in_pixels.w, &usable_window_size_in_pixels.h)") % renderer).str();
-    if (SDL_GetRenderOutputSize(renderer, &usable_window_size_in_pixels.w, &usable_window_size_in_pixels.h)) {
+    operation_description = (boost::format("SDL_GetWindowSizeInPixels(%1%, &usable_window_size_in_pixels.w, &usable_window_size_in_pixels.h)") % window).str();
+    if (SDL_GetWindowSizeInPixels(window, &usable_window_size_in_pixels.w, &usable_window_size_in_pixels.h)) {
         VS_LOG_SDL_SUCCESS(operation_description);
         VS_LOG_SDL_INFO((boost::format("usable window size in pixels: w=%1%, h=%2%") % usable_window_size_in_pixels.w % usable_window_size_in_pixels.h).str());
         native_resolution_x = usable_window_size_in_pixels.w;
@@ -454,8 +514,9 @@ static bool get_screen_measurements() {
         return false;
     }
 
-    operation_description = (boost::format("SDL_GetCurrentRenderOutputSize(%1%, &usable_logical_window_size.w, &usable_logical_window_size.h)") % renderer).str();
-    if (SDL_GetCurrentRenderOutputSize(renderer, &usable_logical_window_size.w, &usable_logical_window_size.h)) {
+    // The size the GL draws to (what the old SDL renderer reported as its output size)
+    operation_description = (boost::format("SDL_GetWindowSizeInPixels(%1%, &usable_logical_window_size.w, &usable_logical_window_size.h)") % window).str();
+    if (SDL_GetWindowSizeInPixels(window, &usable_logical_window_size.w, &usable_logical_window_size.h)) {
         VS_LOG_SDL_SUCCESS(operation_description);
         VS_LOG_SDL_INFO((boost::format("usable logical window size: w=%1%, h=%2%") % usable_logical_window_size.w % usable_logical_window_size.h).str());
         (configuration()).graphics.resolution_x = usable_logical_window_size.w;
@@ -577,25 +638,27 @@ static bool setup_sdl_video_mode() {
 
 
     window = nullptr;
-    renderer = nullptr;
+    // Some platforms choose the pixel format with the window, so ask for the
+    // preferred context up front; create_core_context() retries the others.
+    set_context_attributes(gl_profile_candidates().front());
 
     if (configuration().graphics.gl_accelerated_visual) {
-        result = try_creating_window_and_renderer("Vega Strike", width, height, "opengl", video_flags, &window, &renderer);
+        result = try_creating_window("Vega Strike", width, height, video_flags, &window);
         if (result == false) {
-            VS_LOG_AND_FLUSH(serious_warning, (boost::format("Creating window and renderer failed with error: %1%") % SDL_GetError()));
+            VS_LOG_AND_FLUSH(serious_warning, (boost::format("Creating window failed with error: %1%") % SDL_GetError()));
             VS_LOG_AND_FLUSH(serious_warning, "Please make sure a graphics card driver is installed and functioning properly.");
             SDL_ClearError();
             (configuration()).graphics.gl_accelerated_visual = false;
-
-            result = try_creating_window_and_renderer("Vega Strike", width, height, "software", video_flags, &window, &renderer);
+            SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 0);
+            result = try_creating_window("Vega Strike", width, height, video_flags, &window);
             if (result == false) {
-                VS_LOG_FLUSH_EXIT(fatal, (boost::format("Creating window and renderer failed even with software rendering! Error message: %1%") % SDL_GetError()), 1);
+                VS_LOG_FLUSH_EXIT(fatal, (boost::format("Creating window failed even without an accelerated visual! Error message: %1%") % SDL_GetError()), 1);
             }
         }
     } else {
-        result = try_creating_window_and_renderer("Vega Strike", width, height, "software", video_flags, &window, &renderer);
+        result = try_creating_window("Vega Strike", width, height, video_flags, &window);
         if (result == false) {
-            VS_LOG_FLUSH_EXIT(fatal, (boost::format("Creating window and renderer failed even with software rendering! Error message: %1%") % SDL_GetError()), 1);
+            VS_LOG_FLUSH_EXIT(fatal, (boost::format("Creating window failed even without an accelerated visual! Error message: %1%") % SDL_GetError()), 1);
         }
     }
     std::string operation_description = (boost::format("SDL_SetWindowSize(%1%, %2%, %3%)") % window % width % height).str();
@@ -605,8 +668,8 @@ static bool setup_sdl_video_mode() {
         VS_LOG_SDL_ERROR(operation_description);
     }
 
-    operation_description = (boost::format("SDL_GetCurrentRenderOutputSize(%1%, &native_resolution_x, &native_resolution_y)") % renderer).str();
-    if (SDL_GetCurrentRenderOutputSize(renderer, &native_resolution_x, &native_resolution_y)) {
+    operation_description = (boost::format("SDL_GetWindowSizeInPixels(%1%, &native_resolution_x, &native_resolution_y)") % window).str();
+    if (SDL_GetWindowSizeInPixels(window, &native_resolution_x, &native_resolution_y)) {
         VS_LOG_SDL_SUCCESS(operation_description);
         VS_LOG_SDL_INFO((boost::format("native resolution: width=%1%, height=%2%") % native_resolution_x % native_resolution_y).str());
     } else {
@@ -630,12 +693,12 @@ static bool setup_sdl_video_mode() {
     }
 
     operation_description = (boost::format("SDL_GL_CreateContext(%1%)") % window).str();
-    SDL_GLContext context = SDL_GL_CreateContext(window);
+    SDL_GLContext context = create_core_context(window);
     if (context) {
         VS_LOG_SDL_SUCCESS(operation_description);
     } else {
         VS_LOG_SDL_ERROR(operation_description);
-        VS_LOG_FLUSH_EXIT(fatal, "No GL context", 1);
+        VS_LOG_FLUSH_EXIT(fatal, "No OpenGL 4.6 or 4.1 core profile context could be created", 1);
     }
 
     VS_LOG_SDL_INFO((boost::format("GL Vendor: %1%") % glGetString(GL_VENDOR)).str());
@@ -665,8 +728,9 @@ static bool setup_sdl_video_mode() {
     if (!font_name.empty() && font_name != "Roboto") {
         font_file = VSFileSystem::datadir + "/fonts/" + font_name;
     }
+    const std::string glsl_version = gl_profile.GLSLVersionDirective();
     InitGui(window, &context, configuration().graphics.font_point_dbl,
-            font_file.empty() ? nullptr : font_file.c_str());
+            font_file.empty() ? nullptr : font_file.c_str(), glsl_version.c_str());
 
     return true;
 }

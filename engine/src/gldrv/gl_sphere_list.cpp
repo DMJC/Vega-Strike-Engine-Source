@@ -29,26 +29,27 @@
 #include "src/gfxlib_struct.h"
 #include "gfx_generic/matrix.h"
 #include "gl_globals.h"
+#include "gl_ffp_compat.h"
 #include <assert.h>
 
 void GFXSphereVertexList::Draw() {
-    glEnable(GL_NORMALIZE);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glScalef(radius / 100000.0f, radius / 100000.0f, radius / 100000.0f);
+    vsglEnable(GL_NORMALIZE);
+    vsglMatrixMode(GL_MODELVIEW);
+    vsglPushMatrix();
+    vsglScalef(radius / 100000.0f, radius / 100000.0f, radius / 100000.0f);
     sphere->Draw();
-    glPopMatrix();
-    glDisable(GL_NORMALIZE);
+    vsglPopMatrix();
+    vsglDisable(GL_NORMALIZE);
 }
 
 void GFXSphereVertexList::Draw(enum POLYTYPE *poly, const INDEX index, const int numLists, const int *offsets) {
-    glEnable(GL_NORMALIZE);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glScalef(radius / 100000.0f, radius / 100000.0f, radius / 100000.0f);
+    vsglEnable(GL_NORMALIZE);
+    vsglMatrixMode(GL_MODELVIEW);
+    vsglPushMatrix();
+    vsglScalef(radius / 100000.0f, radius / 100000.0f, radius / 100000.0f);
     sphere->Draw(poly, index, numLists, offsets);
-    glPopMatrix();
-    glDisable(GL_NORMALIZE);
+    vsglPopMatrix();
+    vsglDisable(GL_NORMALIZE);
 }
 
 void GFXSphereVertexList::BeginDrawState(GFXBOOL lock) {

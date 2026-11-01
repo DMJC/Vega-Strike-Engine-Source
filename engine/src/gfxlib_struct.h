@@ -884,10 +884,15 @@ public:
     void ModQuad(int which, const GFXColorVertex *vertices);
 };
 
+namespace vsgl {
+struct DrawPlan;
+}
+
 /**
  * A vertex list is a list of any conglomeration of POLY TYPES.
- * It is held for storage in an array of GFXVertex but attempts
- * to use a display list to hold information if possible
+ * It is held for storage in an array of GFXVertex and mirrored in a
+ * vertex buffer object (plus an element buffer for indexed lists), drawn
+ * through its own vertex array object.
  */
 class /*GFXDRVAPI*/ GFXVertexList {
     friend class GFXSphereVertexList;
@@ -918,10 +923,17 @@ protected:
 ///Array of modes that vertices will be drawn with
     enum POLYTYPE *mode{};
     bool unique_mode{}; //See Draw()
-///Display list number if list is indeed active. 0 otherwise
+///Element buffer object holding the indices (or the generated quad indices), 0 if none
     int display_list{};
     unsigned int *vbo_elements{};
+///Vertex buffer object holding the vertices
     int vbo_data{};
+///Vertex array object recording the attribute layout of vbo_data and display_list
+    unsigned int vertex_array{};
+///How the lists are drawn on a core profile (quads expanded, merged draws...)
+    vsgl::DrawPlan *draw_plan{};
+///Number of vertices vbo_data has storage for
+    int vbo_capacity{};
 ///number of different mode, drawn lists
     int numlists{};
 /**

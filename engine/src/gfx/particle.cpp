@@ -35,6 +35,7 @@
 #include "gfx/camera.h"
 #include "gfx/aux_texture.h"
 #include "gldrv/gl_globals.h"
+#include "gldrv/gl_ffp_compat.h"
 #include "src/universe.h"
 
 #include <iterator>
@@ -308,7 +309,7 @@ void ParticleTrail::DrawAndUpdate() {
         GFXDisable(TEXTURE0);
         GFXPointSize(psize);
         if (psmooth && configuration().graphics.smooth_points) {
-            glEnable(GL_POINT_SMOOTH);
+            vsglEnable(GL_POINT_SMOOTH);
         }
         if (pblend) {
             GFXBlendMode(SRCALPHA, INVSRCALPHA);
@@ -342,7 +343,7 @@ void ParticleTrail::DrawAndUpdate() {
         }
         GFXDraw(GFXPOINT, &particleVert[0], particles.size(), 3, 4);
 
-        glDisable(GL_POINT_SMOOTH);
+        vsglDisable(GL_POINT_SMOOTH);
         GFXPointSize(1);
     } else {
         Texture *t = config.texture;

@@ -32,6 +32,8 @@
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "gl_globals.h"
+#include "gl_renderer.h"
+#include "gl_shader_translate.h"
 #include "configuration/configuration.h"
 #include "root_generic/vs_globals.h"
 #include "vegadisk/vsfilesystem.h"
@@ -232,18 +234,12 @@ static int GFXCreateProgramNoCache(const char *vprogram, const char *fprogram, c
     if (vprogram[0] == '\0' && fprogram[0] == '\0') {
         return 0;
     }
-#ifndef __APPLE__
     if (glGetProgramInfoLog_p == NULL || glCreateShader_p == NULL || glShaderSource_p == NULL
             || glCompileShader_p == NULL
             || glAttachShader_p == NULL || glLinkProgram_p == NULL || glGetShaderiv_p == NULL
             || glGetProgramiv_p == NULL) {
         return 0;
     }
-#else
-#ifdef OSX_LOWER_THAN_10_4
-    return 0;
-#endif
-#endif
     GLenum errCode;
     while ((errCode = glGetError()) != GL_NO_ERROR) {
         VS_LOG(error, (boost::format("Error code %1%") % gluErrorString(errCode)));
@@ -269,6 +265,13 @@ static int GFXCreateProgramNoCache(const char *vprogram, const char *fprogram, c
         vertexprg = appendDefines(vertexprg, extra_defines);
         fragprg = appendDefines(fragprg, extra_defines);
     }
+
+    // The data shaders are written against the compatibility profile;
+    // rewrite them for the core profile in use.
+    const vsgl::ProgramTranslation translation =
+            vsgl::TranslateLegacyProgram(vertexprg, fragprg, vsgl::CurrentProfile().GLSLVersion());
+    vertexprg = translation.vertex.source;
+    fragprg = translation.fragment.source;
 
     GLint vproghandle = 0;
     GLint fproghandle = 0;
@@ -344,6 +347,7 @@ static int GFXCreateProgramNoCache(const char *vprogram, const char *fprogram, c
         return 0;
     }
     printLog(sp, false);
+    vsgl::RegisterProgram(sp);
 
     /* only for dev work
      *  glGetProgramiv_p(sp,GL_VALIDATE_STATUS,&successp);
@@ -448,6 +452,8 @@ void GFXReloadDefaultShader() {
 
     bool islow = (lowfiprog == defaultprog);
     if (glDeleteProgram_p && defaultprog) {
+        vsgl::ForgetProgram(lowfiprog);
+        vsgl::ForgetProgram(hifiprog);
         glDeleteProgram_p(lowfiprog);
         glDeleteProgram_p(hifiprog);
     }
@@ -591,12 +597,9 @@ int GFXActivateShader(int program) {
     if (program != lastprogram) {
         programChanged = true;
     }
-    if (program != lastprogram
-#ifndef __APPLE__
-            && glUseProgram_p
-#endif
-            ) {
-        glUseProgram_p(program);
+    if (program != lastprogram) {
+        // 0 selects the fixed-function emulation, bound at the next draw
+        vsgl::SetUserProgram(program);
         lastprogram = program;
     } else {
         return 0;
@@ -618,6 +621,9 @@ void GFXDeactivateShader() {
 }
 
 int GFXShaderConstant(int name, float v1, float v2, float v3, float v4) {
+    if (vsgl::UserProgram() == 0) {
+        return 0;  // the fixed-function emulation program is bound; its uniforms are not the caller's
+    }
     if (1
 #ifndef __APPLE__
             && glUniform4f_p
@@ -642,6 +648,9 @@ int GFXShaderConstant(int name, Vector v) {
 }
 
 int GFXShaderConstant(int name, float v1) {
+    if (vsgl::UserProgram() == 0) {
+        return 0;  // the fixed-function emulation program is bound; its uniforms are not the caller's
+    }
     if (1
 #ifndef __APPLE__
             && glUniform1f_p
@@ -654,6 +663,9 @@ int GFXShaderConstant(int name, float v1) {
 }
 
 int GFXShaderConstantv(int name, unsigned int count, const float *values) {
+    if (vsgl::UserProgram() == 0) {
+        return 0;  // the fixed-function emulation program is bound; its uniforms are not the caller's
+    }
     if (1
 #ifndef __APPLE__
             && glUniform1fv_p
@@ -666,6 +678,9 @@ int GFXShaderConstantv(int name, unsigned int count, const float *values) {
 }
 
 int GFXShaderConstant4v(int name, unsigned int count, const float *values) {
+    if (vsgl::UserProgram() == 0) {
+        return 0;  // the fixed-function emulation program is bound; its uniforms are not the caller's
+    }
     if (1
 #ifndef __APPLE__
             && glUniform4fv_p
@@ -678,6 +693,9 @@ int GFXShaderConstant4v(int name, unsigned int count, const float *values) {
 }
 
 int GFXShaderConstanti(int name, int value) {
+    if (vsgl::UserProgram() == 0) {
+        return 0;  // the fixed-function emulation program is bound; its uniforms are not the caller's
+    }
     if (1
 #ifndef __APPLE__
             && glUniform1i_p
@@ -690,6 +708,9 @@ int GFXShaderConstanti(int name, int value) {
 }
 
 int GFXShaderConstantv(int name, unsigned int count, const int *value) {
+    if (vsgl::UserProgram() == 0) {
+        return 0;  // the fixed-function emulation program is bound; its uniforms are not the caller's
+    }
     if (1
 #ifndef __APPLE__
             && glUniform1i_p

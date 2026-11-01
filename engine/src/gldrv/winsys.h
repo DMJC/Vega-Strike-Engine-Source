@@ -338,6 +338,10 @@ void winsys_set_motion_func(winsys_motion_func_t func);
 void winsys_set_passive_motion_func(winsys_motion_func_t func);
 
 void winsys_swap_buffers();
+
+namespace vsgl { struct ContextProfile; }
+/// The OpenGL core profile the context was created with
+const vsgl::ContextProfile &winsys_gl_profile();
 // Apply the configured vsync mode and recompute the software frame cap (using the
 // monitor refresh for the "half monitor" mode). Call at startup and on config change.
 void winsys_apply_frame_limit();

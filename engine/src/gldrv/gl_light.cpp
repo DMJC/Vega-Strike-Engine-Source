@@ -34,6 +34,7 @@ using std::stack;
 #include "root_generic/vs_globals.h"
 #include "src/gfxlib.h"
 #include "gl_light.h"
+#include "gl_ffp_compat.h"
 #include "src/config_xml.h"
 #include "root_generic/options.h"
 
@@ -65,7 +66,7 @@ void /*GFXDRVAPI*/ GFXPushGlobalEffects() {
     for (int i = 0; i < GFX_MAX_LIGHTS; i++) {
         tmp[i] = (0 != (GLLights[i].options & OpenGLL::GL_ENABLED));
         if (GLLights[i].options & OpenGLL::GL_ENABLED) {
-            glDisable(GL_LIGHT0 + i);
+            vsglDisable(GL_LIGHT0 + i);
         }
     }
     GlobalEffects.push(tmp);
@@ -79,7 +80,7 @@ GFXBOOL /*GFXDRVAPI*/ GFXPopGlobalEffects() {
     }
     for (int i = 0; i < GFX_MAX_LIGHTS; i++) {
         if (GlobalEffects.top()[i]) {
-            glEnable(GL_LIGHT0 + i);
+            vsglEnable(GL_LIGHT0 + i);
         }
     }
 
@@ -263,9 +264,9 @@ GFXBOOL /*GFXDRVAPI*/ GFXSetOptimalNumLights(const int numLights) {
 GFXBOOL /*GFXDRVAPI*/ GFXSetSeparateSpecularColor(const GFXBOOL spec) {
 #if !defined (_WIN32) && !defined (__CYGWIN__)
     if (spec) {
-        glLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR);
+        vsglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR);
     } else {
-        glLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SINGLE_COLOR);
+        vsglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SINGLE_COLOR);
         return GFXFALSE;
     }
 #else
@@ -283,7 +284,7 @@ GFXBOOL /*GFXDRVAPI*/ GFXLightContextAmbient(const GFXColor &amb) {
     //(_ambient_light[_currentContext])[2]=amb.b;
     //(_ambient_light[_currentContext])[3]=amb.a;
     float tmp[4] = {amb.r, amb.g, amb.b, amb.a};
-    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, tmp);
+    vsglLightModelfv(GL_LIGHT_MODEL_AMBIENT, tmp);
     return GFXTRUE;
 }
 
@@ -378,7 +379,7 @@ void /*GFXDRVAPI*/ GFXSetLightContext(const int con_number) {
     lighttable.Clear();
     _currentContext = con_number;
     _llights = &_local_lights_dat[con_number];
-    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, (GLfloat *) &(_ambient_light[con_number]));
+    vsglLightModelfv(GL_LIGHT_MODEL_AMBIENT, (GLfloat *) &(_ambient_light[con_number]));
     //reset all lights so they arean't in GLLights
     for (i = 0; i < _llights->size(); i++) {
         (*_llights)[i].Target() = -1;
@@ -397,7 +398,7 @@ void /*GFXDRVAPI*/ GFXSetLightContext(const int con_number) {
     for (; GLLindex < GFX_MAX_LIGHTS; GLLindex++) {
         GLLights[GLLindex].index = -1;
         GLLights[GLLindex].options = OpenGLL::GLL_OFF;
-        glDisable(GL_LIGHT0 + GLLindex);
+        vsglDisable(GL_LIGHT0 + GLLindex);
     }
 }
 
@@ -410,9 +411,10 @@ void GFXDestroyAllLights() {
 }
 
 static void SetupGLLightGlobals() {
-    glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER,
+    vsglLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER,
             1);     //don't want lighting coming from infinity....we have to take the hit due to sphere mapping matrix tweaking
-    glGetIntegerv(GL_MAX_LIGHTS, &GFX_MAX_LIGHTS);
+    // The emulated pipeline (like every GL 2.x implementation) has 8 lights
+    GFX_MAX_LIGHTS = vsgl::FixedFunctionState::kMaxLights;
     if (!GLLights) {
         GLLights = (OpenGLLights *) malloc(sizeof(OpenGLLights) * GFX_MAX_LIGHTS);
         for (int i = 0; i < GFX_MAX_LIGHTS; i++) {

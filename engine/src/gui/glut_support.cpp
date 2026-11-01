@@ -29,6 +29,8 @@
 #include "glut_support.h"
 #include "src/vs_logging.h"
 #include "gldrv/gl_globals.h"
+#include "gldrv/gl_ffp_compat.h"
+#include "src/gfxlib.h"
 #include "configuration/configuration.h"
 
 
@@ -58,18 +60,15 @@ void ShowColor(float x, float y, float wid, float hei, float red, float green, f
     VS_LOG(debug, (boost::format("With the color %1%,%2%,%3%,%4%") % red % green % blue % alpha));
     VS_LOG(debug, "-----------------------------");
 #endif
-    glDisable(GL_TEXTURE_2D);
-    glBegin(GL_QUADS);
-    glColor4fv(cols);
-    glVertex2f(x, y - hei);
-    glColor4fv(cols);
-    glVertex2f(x, y);
-    glColor4fv(cols);
-    glVertex2f(x + wid, y);
-    glColor4fv(cols);
-    glVertex2f(x + wid, y - hei);
-    glEnd();
-    glEnable(GL_TEXTURE_2D);
+    const float verts[4 * 6] = {
+            x, y - hei, cols[0], cols[1], cols[2], cols[3],
+            x, y, cols[0], cols[1], cols[2], cols[3],
+            x + wid, y, cols[0], cols[1], cols[2], cols[3],
+            x + wid, y - hei, cols[0], cols[1], cols[2], cols[3],
+    };
+    vsglDisable(GL_TEXTURE_2D);
+    GFXDraw(GFXQUAD, verts, 4, 2, 4);
+    vsglEnable(GL_TEXTURE_2D);
 }
 
 float word_length(const char *str) {
@@ -82,59 +81,13 @@ float word_length(const char *str) {
 }
 
 void ShowText(float x, float y, float wid, int size, const char *str, int no_end) {
-    const float rescale_font = configuration().graphics.gui_font_scale_flt;
-    float font_size_float = rescale_font * 5. / 100;
-
-    int cur;
-    float font_size = size * rescale_font;
-    float width = 0;
-    float cur_width = 0;
-    float end = 0;
-    font_size /= 10000;
-
-    glDisable(GL_TEXTURE_2D);
-    glLoadIdentity();
-    if (configuration().graphics.smooth_lines) {
-        glEnable(GL_LINE_SMOOTH);
-    }
-    glLineWidth(wid);
-    float page_wid = wid / rescale_font;
-    glTranslatef(x, y, 0);
-    glScalef(font_size, font_size, 1);
-    end = no_end ? 0 : glutStrokeWidth(GLUT_STROKE_ROMAN, 'A');
-    end /= 2500;
-    //if (no_end == 1) { end = 0; }
-    int h = 0;
-    for (cur = 0; str[cur] != '\0'; cur++) {
-        cur_width = glutStrokeWidth(GLUT_STROKE_ROMAN, str[cur]);
-        cur_width /= 2500;
-        if ((width + end + word_length(str + cur) > page_wid || str[cur] == '\\') && str[cur + 1] != '\0') {
-            if (no_end == 0) {
-                width += cur_width;
-                for (int i = 1; i <= 3; i++) {
-                    glutStrokeCharacter(GLUT_STROKE_ROMAN, '.');
-                }
-                break;
-            } else {
-                width = 0;
-                glLoadIdentity();
-                if (configuration().graphics.smooth_lines) {
-                    glEnable(GL_LINE_SMOOTH);
-                }
-                glLineWidth(wid);
-                glTranslatef(x, y - (++h) * font_size_float, 0);
-                glScalef(font_size, font_size, 1);
-            }
-        } else {
-            width += cur_width;
-        }
-        if (str[cur] != '\\') {
-            glutStrokeCharacter(GLUT_STROKE_ROMAN, str[cur]);
-        }
-    }
-    glLoadIdentity();
-    if (configuration().graphics.smooth_lines) {
-        glDisable(GL_LINE_SMOOTH);
+    // GLUT stroke fonts draw with immediate mode inside freeglut, which a core
+    // profile does not have. Nothing instantiates the legacy TextArea/Button
+    // that used this; the game's text goes through TextPlane.
+    static bool warned = false;
+    if (!warned) {
+        warned = true;
+        VS_LOG(warning, "ShowText: GLUT stroke text is not available on the OpenGL core profile");
     }
 }
 

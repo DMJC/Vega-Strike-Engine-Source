@@ -26,6 +26,7 @@
  */
 #define GL_STATE_CPP
 #include "gl_globals.h"
+#include "gl_ffp_compat.h"
 #undef GL_STATE_CPP
 
 #include "src/gfxlib.h"
@@ -92,11 +93,11 @@ extern GFXBOOL GFXLIGHTING;
 void /*GFXDRVAPI*/ GFXEnable(const STATE state) {
     switch (state) {
         case LIGHTING:
-            glEnable(GL_LIGHTING);
+            vsglEnable(GL_LIGHTING);
             GFXLIGHTING = GFXTRUE;
             break;
         case DEPTHTEST:
-            glEnable(GL_DEPTH_TEST);
+            vsglEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LEQUAL);
             //glDepthFunc (GL_ALWAYS);
             break;
@@ -109,8 +110,8 @@ void /*GFXDRVAPI*/ GFXEnable(const STATE state) {
         case TEXTURE0:
             /*if (bTex[0] != GL_TEXTURE_2D) {
              *       GFXActiveTexture(0);
-             *   if (bTex[0]) glDisable(bTex[0]);
-             *       glEnable (bTex[0]=GL_TEXTURE_2D);
+             *   if (bTex[0]) vsglDisable(bTex[0]);
+             *       vsglEnable(bTex[0]=GL_TEXTURE_2D);
              *  }*/
             //NOTE: The above code should be used, but since not all parts of VS use the GFX,
             //we will use GFXEnable() / GFXDisable() as syncrhonization methods (they will
@@ -118,26 +119,26 @@ void /*GFXDRVAPI*/ GFXEnable(const STATE state) {
             GFXActiveTexture(0);
 #ifdef NV_CUBE_MAP
             if (bTex[0] != GL_TEXTURE_CUBE_MAP_EXT) {
-                glDisable(GL_TEXTURE_CUBE_MAP_EXT);
+                vsglDisable(GL_TEXTURE_CUBE_MAP_EXT);
             }
 #endif
             if (bTex[0] != 0 && bTex[0] != GL_TEXTURE_2D) {
-                glDisable(bTex[0]);
+                vsglDisable(bTex[0]);
             }
-            glEnable(bTex[0] = GL_TEXTURE_2D);
+            vsglEnable(bTex[0] = GL_TEXTURE_2D);
             break;
         case TEXTURE1:
             /*if (gl_options.Multitexture) {
              *     GFXActiveTexture (1);
              * #ifdef NV_CUBE_MAP
              *  if (bTex[1] != GL_TEXTURE_CUBE_MAP_EXT) {
-             *  if (bTex[1]) glDisable(bTex[1]);
-             *         glEnable (bTex[1]=GL_TEXTURE_CUBE_MAP_EXT);
+             *  if (bTex[1]) vsglDisable(bTex[1]);
+             *         vsglEnable(bTex[1]=GL_TEXTURE_CUBE_MAP_EXT);
              *  }
              * #else
              *  if (bTex[1] != GL_TEXTURE_2D) {
-             *  if (bTex[1]) glDisable(bTex[1]);
-             *         glEnable (bTex[1]=GL_TEXTURE_2D);
+             *  if (bTex[1]) vsglDisable(bTex[1]);
+             *         vsglEnable(bTex[1]=GL_TEXTURE_2D);
              *  }
              * #endif
              *  }*/
@@ -148,31 +149,31 @@ void /*GFXDRVAPI*/ GFXEnable(const STATE state) {
             if (gl_options.Multitexture) {
                 GFXActiveTexture(1);
                 if (bTex[1] != 0) {
-                    glDisable(bTex[1]);
+                    vsglDisable(bTex[1]);
                 }
 #ifdef NV_CUBE_MAP
                 if (bTex[1] != 0 && bTex[1] != GL_TEXTURE_2D) {
-                    glDisable(GL_TEXTURE_2D);
+                    vsglDisable(GL_TEXTURE_2D);
                 }
-                glEnable(bTex[1] = GL_TEXTURE_CUBE_MAP_EXT);
+                vsglEnable(bTex[1] = GL_TEXTURE_CUBE_MAP_EXT);
 #else
-                glEnable( bTex[1] = GL_TEXTURE_2D );
+                vsglEnable( bTex[1] = GL_TEXTURE_2D );
 #endif
             }
             break;
         case CULLFACE:
-            glEnable(GL_CULL_FACE);
+            vsglEnable(GL_CULL_FACE);
             break;
         case SMOOTH:
             if (configuration().graphics.smooth_lines) {
-                glEnable(GL_LINE_SMOOTH);
+                vsglEnable(GL_LINE_SMOOTH);
             }
             if (configuration().graphics.smooth_points) {
-                glEnable(GL_POINT_SMOOTH);
+                vsglEnable(GL_POINT_SMOOTH);
             }
             break;
         case STENCIL:
-            glEnable(GL_STENCIL);
+            glEnable(GL_STENCIL_TEST);
             break;
     }
 }
@@ -184,10 +185,10 @@ void GFXToggleTexture(bool enable, int whichstage, enum TEXTURE_TARGET target) {
         if (bTex[whichstage] != btt) {
             GFXActiveTexture(whichstage);
             if (bTex[whichstage]) {
-                glDisable(bTex[whichstage]);
+                vsglDisable(bTex[whichstage]);
             }
             if (enable) {
-                glEnable(bTex[whichstage] = tt);
+                vsglEnable(bTex[whichstage] = tt);
             } else {
                 bTex[whichstage] = 0;
             }
@@ -198,11 +199,11 @@ void GFXToggleTexture(bool enable, int whichstage, enum TEXTURE_TARGET target) {
 void /*GFXDRVAPI*/ GFXDisable(const STATE state) {
     switch (state) {
         case LIGHTING:
-            glDisable(GL_LIGHTING);
+            vsglDisable(GL_LIGHTING);
             GFXLIGHTING = GFXFALSE;
             break;
         case DEPTHTEST:
-            glDisable(GL_DEPTH_TEST);
+            vsglDisable(GL_DEPTH_TEST);
             break;
         case DEPTHWRITE:
             glDepthMask(GL_FALSE);
@@ -213,7 +214,7 @@ void /*GFXDRVAPI*/ GFXDisable(const STATE state) {
         case TEXTURE0:
             /*if (bTex[0]) {
              *       GFXActiveTexture(0);
-             *       glDisable (bTex[0]);
+             *       vsglDisable(bTex[0]);
              *       bTex[0] = 0;
              *  }*/
             //NOTE: The above code should be used, but since not all parts of VS use the GFX,
@@ -222,21 +223,21 @@ void /*GFXDRVAPI*/ GFXDisable(const STATE state) {
             //states in the GFX. Those two units are used during GUI rendering bypassing the GFX.
             GFXActiveTexture(0);
 #ifdef NV_CUBE_MAP
-            glDisable(GL_TEXTURE_CUBE_MAP_EXT);
+            vsglDisable(GL_TEXTURE_CUBE_MAP_EXT);
             if (bTex[0] == GL_TEXTURE_CUBE_MAP_EXT) {
                 bTex[0] = 0;
             }
 #endif
-            glDisable(GL_TEXTURE_2D);
+            vsglDisable(GL_TEXTURE_2D);
             if (bTex[0] != 0 && bTex[0] != GL_TEXTURE_2D) {
-                glDisable(bTex[0]);
+                vsglDisable(bTex[0]);
             }
             bTex[0] = 0;
             break;
         case TEXTURE1:
             /*if (bTex[1]&&gl_options.Multitexture) {
              *   GFXActiveTexture(1);
-             *   glDisable(bTex[1]);
+             *   vsglDisable(bTex[1]);
              *   bTex[1] = 0;
              *  }*/
             //NOTE: The above code should be used, but since not all parts of VS use the GFX,
@@ -246,27 +247,27 @@ void /*GFXDRVAPI*/ GFXDisable(const STATE state) {
             if (gl_options.Multitexture) {
                 GFXActiveTexture(1);
 #ifdef NV_CUBE_MAP
-                glDisable(GL_TEXTURE_CUBE_MAP_EXT);
+                vsglDisable(GL_TEXTURE_CUBE_MAP_EXT);
                 if (bTex[1] == GL_TEXTURE_CUBE_MAP_EXT) {
                     bTex[1] = 0;
                 }
 #endif
-                glDisable(GL_TEXTURE_2D);
+                vsglDisable(GL_TEXTURE_2D);
                 if (bTex[1] != 0 && bTex[1] != GL_TEXTURE_2D) {
-                    glDisable(bTex[1]);
+                    vsglDisable(bTex[1]);
                 }
                 bTex[1] = 0;
             }
             break;
         case CULLFACE:
-            glDisable(GL_CULL_FACE);
+            vsglDisable(GL_CULL_FACE);
             break;
         case SMOOTH:
-            glDisable(GL_LINE_SMOOTH);
-            glDisable(GL_POINT_SMOOTH);
+            vsglDisable(GL_LINE_SMOOTH);
+            vsglDisable(GL_POINT_SMOOTH);
             break;
         case STENCIL:
-            glDisable(GL_STENCIL);
+            glDisable(GL_STENCIL_TEST);
             break;
     }
 }
@@ -292,13 +293,12 @@ void GFXTextureAddressMode(const ADDRESSMODE mode, enum TEXTURE_TARGET target) {
             wm2 = 0;
             break;
         case BORDER:
-            wm1 = GL_CLAMP;
-            wm2 = GL_CLAMP_TO_BORDER_ARB;
             glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, BColor);
             //nobreak
         case CLAMP:
-            wm1 = GL_CLAMP;
-            wm2 = GL_CLAMP_TO_EDGE_EXT;
+            // GL_CLAMP is gone from core profiles; edge clamping is what was applied anyway
+            wm1 = GL_CLAMP_TO_EDGE_EXT;
+            wm2 = 0;
             break;
         case MIRROR:     //nope not goin here I hope nVidia extension?
         default:
@@ -399,26 +399,26 @@ void GFXPopBlendMode() {
 
 void GFXColorMaterial(int LIGHTTARG) {
     if (LIGHTTARG) {
-        glEnable(GL_COLOR_MATERIAL);
+        vsglEnable(GL_COLOR_MATERIAL);
         switch (LIGHTTARG) {
             case EMISSION:
-                glColorMaterial(GL_FRONT_AND_BACK, GL_EMISSION);
+                vsglColorMaterial(GL_FRONT_AND_BACK, GL_EMISSION);
                 break;
             case AMBIENT:
-                glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT);
+                vsglColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT);
                 break;
             case DIFFUSE:
-                glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
+                vsglColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
                 break;
             case (AMBIENT | DIFFUSE):
-                glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+                vsglColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
                 break;
             case SPECULAR:
-                glColorMaterial(GL_FRONT_AND_BACK, GL_SPECULAR);
+                vsglColorMaterial(GL_FRONT_AND_BACK, GL_SPECULAR);
                 break;
         }
     } else {
-        glDisable(GL_COLOR_MATERIAL);
+        vsglDisable(GL_COLOR_MATERIAL);
     }
 }
 
@@ -623,20 +623,21 @@ void GFXStencilMask(unsigned int mask) {
 }
 
 void GFXActiveTexture(const int stage) {
-    if (gl_options.Multitexture && stage != activeTextureStage && glActiveTextureARB_p) {
-        glActiveTextureARB_p(GL_TEXTURE0_ARB + stage);
+    if (gl_options.Multitexture && stage != activeTextureStage) {
+        vsglActiveTexture(GL_TEXTURE0 + stage);
         activeTextureStage = stage;
     } else {
         activeTextureStage = stage;         //This ensures consistent behavior - they shouldn't even call us
+        vsglState().SetActiveTexture(stage);
     }
 }
 
 void GFXAlphaTest(const enum DEPTHFUNC df, const float ref) {
     if (df == ALWAYS) {
-        glDisable(GL_ALPHA_TEST);
+        vsglDisable(GL_ALPHA_TEST);
         return;
     } else {
-        glEnable(GL_ALPHA_TEST);
+        vsglEnable(GL_ALPHA_TEST);
     }
     GLenum tmp;
     switch (df) {
@@ -666,6 +667,6 @@ void GFXAlphaTest(const enum DEPTHFUNC df, const float ref) {
             tmp = GL_ALWAYS;
             break;
     }
-    glAlphaFunc(tmp, ref);
+    vsglAlphaFunc(tmp, ref);
 }
 

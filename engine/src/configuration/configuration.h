@@ -1729,6 +1729,8 @@ namespace vega_config {
         double generic_cargo_rotation_speed_dbl = 1.0;
         float generic_cargo_rotation_speed_flt = 1.0;
         bool gl_accelerated_visual = true;
+        // OpenGL core profile to request: "auto" (4.6, falling back to 4.1), "4.6" or "4.1". macOS always uses 4.1.
+        std::string gl_profile = "auto";
         bool glow_ambient_star_light = false;
         bool glow_diffuse_star_light = false;
         bool glut_stencil = true;
