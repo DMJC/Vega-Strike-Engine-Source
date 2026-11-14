@@ -392,6 +392,26 @@ public:
     virtual void SelectCamera(int) {
     }
 
+    /**
+     * Cinematic camera, for scripted cutscenes. While active, the view is
+     * taken from a camera placed at `position` instead of from the ship, and
+     * the cockpit, HUD and view keys are disabled. The camera aims at
+     * `track` when it is non-null (following it every frame), otherwise at
+     * `look_at`. `fov` is in degrees; <= 0 keeps the configured FOV.
+     * Calling it again while active moves/re-aims the camera.
+     */
+    virtual void SetCinematicCamera(const QVector &position, const QVector &look_at, const Vector &up, float fov,
+            Unit *track) {
+    }
+
+    ///Ends the cinematic camera and restores the view that was active before it.
+    virtual void ClearCinematicCamera() {
+    }
+
+    virtual bool CinematicCameraActive() const {
+        return false;
+    }
+
     ///GFXLoadMatrix proper camera
     virtual void SetViewport() {
     }

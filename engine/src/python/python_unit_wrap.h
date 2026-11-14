@@ -188,6 +188,10 @@ voidWRAPPED1( SetVelocity, Vector, v
 )
 voidWRAPPED1( SetAngularVelocity, Vector, v
 )
+voidWRAPPED1( SetInvulnerable, bool, invulnerable
+)
+WRAPPED0(bool, IsInvulnerable,
+false )
 #endif // (WHICH_UNIT_EXPORT_NUMBER == 1) || (WHICH_UNIT_EXPORT_NUMBER == 3)
 
 #if (WHICH_UNIT_EXPORT_NUMBER == 1) || (WHICH_UNIT_EXPORT_NUMBER == 2)

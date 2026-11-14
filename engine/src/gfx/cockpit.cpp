@@ -955,7 +955,7 @@ GameCockpit::GameCockpit(const char *file, Unit *parent, const std::string &pilo
 }
 
 void GameCockpit::SelectProperCamera() {
-    SelectCamera(view);
+    SelectCamera(cinematic.active ? CP_FIXED : view);
 }
 
 extern vector<int> respawnunit;
@@ -1434,6 +1434,8 @@ void GameCockpit::Draw() {
     const bool draw_star_destination_arrow = configuration().graphics.hud.draw_star_direction;
     static GFXColor destination_system_color = vs_config->getColor("destination_system_color");
     Vector destination_system_location(0, 0, 0);
+    // Screenshots and cutscenes draw the scene without the HUD overlays
+    const bool hide_hud = screenshotkey || cinematic.active;
     cockpit_time += GetElapsedTime();
     if (cockpit_time >= 100000) {
         InitStatic();
@@ -1453,7 +1455,7 @@ void GameCockpit::Draw() {
     }
     const bool draw_any_boxes = configuration().graphics.hud.draw_targetting_boxes;
     const bool draw_boxes_inside_only = configuration().graphics.hud.draw_targetting_boxes_inside;
-    if (draw_any_boxes && screenshotkey == false && (draw_boxes_inside_only == false || view < CP_CHASE)) {
+    if (draw_any_boxes && !hide_hud && (draw_boxes_inside_only == false || view < CP_CHASE)) {
         Unit *player = GetParent();
         if (player) {
             Radar::Sensor sensor(player);
@@ -1646,7 +1648,7 @@ void GameCockpit::Draw() {
     if ((view == CP_FRONT)
             || (view == CP_CHASE && crosshairs_on_chasecam)
             || ((view == CP_VIEWTARGET || view == CP_PANINSIDE) && crosshairs_on_padlock)) {
-        if (Panel.size() > 0 && Panel.front() && screenshotkey == false) {
+        if (Panel.size() > 0 && Panel.front() && !hide_hud) {
             const bool drawCrosshairs = configuration().graphics.hud.draw_rendered_crosshairs;
             if (drawCrosshairs) {
                 float x, y, wid, hei;
@@ -1834,7 +1836,7 @@ void GameCockpit::Draw() {
         //Draw the arrow to the target.
         {
             Unit *parent = nullptr;
-            if (configuration().graphics.hud.draw_arrow_to_target && ((parent = this->parent.GetUnit()))) {
+            if (!hide_hud && configuration().graphics.hud.draw_arrow_to_target && ((parent = this->parent.GetUnit()))) {
                 Radar::Sensor sensor(parent);
                 if ((view == CP_PAN
                         && !configuration().graphics.hud.draw_arrow_on_pan_cam)
@@ -1932,7 +1934,7 @@ void GameCockpit::Draw() {
     const bool mousecursor_pancam = configuration().joystick.mouse_cursor_pancam;
     const bool mousecursor_pantgt = configuration().joystick.mouse_cursor_pantgt;
     const bool mousecursor_chasecam = configuration().joystick.mouse_cursor_chasecam;
-    if (mouseCursor && screenshotkey == false) {
+    if (mouseCursor && !hide_hud) {
         if ((view == CP_PAN
                 && !mousecursor_pancam)
                 || (view == CP_PANTARGET && !mousecursor_pantgt) || (view == CP_CHASE && !mousecursor_chasecam)) {
@@ -2336,6 +2338,11 @@ static void translate_as(Vector &p,
 }
 
 void GameCockpit::SetupViewPort(bool clip) {
+    if (cinematic.active) {
+        // View keys and the autopilot may change the view; a cutscene keeps it
+        view = CP_FIXED;
+        SelectCamera(CP_FIXED);
+    }
     _Universe->AccessCamera()->RestoreViewPort(0, (view == CP_FRONT ? viewport_offset : 0));
     GFXViewPort(0,
             static_cast<int>((view == CP_FRONT ? viewport_offset : 0) * configuration().graphics.resolution_y),
@@ -2530,6 +2537,9 @@ void GameCockpit::SetupViewPort(bool clip) {
             _Universe->AccessCamera()->SetFov(smooth_fov);
         }
     }
+    if (cinematic.active) {
+        ApplyCinematicCamera();
+    }
     _Universe->AccessCamera()->UpdateGFX(clip ? GFXTRUE : GFXFALSE);
 
     //parent->UpdateHudMatrix();
@@ -2539,6 +2549,69 @@ void GameCockpit::SelectCamera(int cam) {
     if (cam < NUM_CAM && cam >= 0) {
         currentcamera = cam;
     }
+}
+
+void GameCockpit::SetCinematicCamera(const QVector &position, const QVector &look_at, const Vector &up, float fov,
+        Unit *track) {
+    if (!(FINITE(position.i) && FINITE(position.j) && FINITE(position.k))) {
+        VS_LOG(warning, "SetCinematicCamera: ignoring non-finite camera position");
+        return;
+    }
+    if (!cinematic.active) {
+        cinematic.saved_view = view;
+        cinematic.active = true;
+    }
+    cinematic.position = position;
+    cinematic.look_at = look_at;
+    cinematic.up = up;
+    cinematic.fov = fov;
+    cinematic.track.SetUnit(track);
+    view = CP_FIXED;
+    SelectCamera(CP_FIXED);
+    ApplyCinematicCamera();
+}
+
+void GameCockpit::ClearCinematicCamera() {
+    if (!cinematic.active) {
+        return;
+    }
+    cinematic.active = false;
+    cinematic.track.SetUnit(nullptr);
+    view = cinematic.saved_view;
+    // Back to the configured FOV; SetupViewPort re-applies the warp FOV link
+    cam[CP_FIXED].SetFov(configuration().graphics.fov_flt);
+    SelectCamera(view);
+}
+
+void GameCockpit::ApplyCinematicCamera() {
+    Camera &camera = cam[CP_FIXED];
+    Unit *track = cinematic.track.GetUnit();
+    if (track) {
+        cinematic.look_at = track->Position();
+    }
+
+    QVector forward = cinematic.look_at - cinematic.position;
+    if (forward.Magnitude() > 1e-6) {
+        Vector r = forward.Cast();
+        r.Normalize();
+        Vector up = cinematic.up;
+        if (up.Magnitude() < 1e-6) {
+            up = Vector(0, 1, 0);
+        }
+        up.Normalize();
+        // Looking straight along the up vector: pick another reference
+        if (std::fabs(r.Dot(up)) > 0.999f) {
+            up = std::fabs(r.j) < 0.9f ? Vector(0, 1, 0) : Vector(0, 0, 1);
+        }
+        Vector p = r.Cross(up);
+        p.Normalize();
+        Vector q = p.Cross(r);
+        camera.SetOrientation(p, q, r);
+    }
+
+    camera.SetPosition(cinematic.position, Vector(0, 0, 0), Vector(0, 0, 0), Vector(0, 0, 0));
+    camera.SetFov(cinematic.fov > 0 ? cinematic.fov : configuration().graphics.fov_flt);
+    camera.setCockpitOffset(0);
 }
 
 Camera *GameCockpit::AccessCamera(int num) {

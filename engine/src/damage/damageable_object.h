@@ -51,6 +51,9 @@ struct DamageableObject {
     bool Destroyed();
 
     void SetInvulnerable(bool invulnerable);
+    bool IsInvulnerable() const {
+        return invulnerable;
+    }
 
     // Callbacks
     void (*explosion)(DamageableObject object);

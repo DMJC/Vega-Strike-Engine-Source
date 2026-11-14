@@ -38,6 +38,8 @@ typedef boost::python::dict BoostPythonDictionary;
 #include "gfx_generic/vec.h"
 #include "cmd/unit_generic.h"
 #include "src/universe_util.h"
+#include "src/universe.h"
+#include "gfx_generic/cockpit_generic.h"
 #include "cmd/unit_util.h"
 #include "root_generic/faction_generic.h"
 #include "cmd/ai/fire.h"
@@ -68,6 +70,41 @@ UnitWrapper newGetPlayer() {
 void setOwner(int obj, UnitWrapper un) {
     setOwnerII(obj, un.GetUnit());
 }
+
+// Cinematic camera: the cockpit of this mission's player
+static Cockpit *cinematicCockpit() {
+    Unit *player = getPlayer();
+    Cockpit *cockpit = player ? _Universe->isPlayerStarship(player) : nullptr;
+    return cockpit ? cockpit : _Universe->AccessCockpit();
+}
+
+void setCinematicCamera(QVector position, QVector look_at, Vector up, float fov) {
+    if (Cockpit *cockpit = cinematicCockpit()) {
+        cockpit->SetCinematicCamera(position, look_at, up, fov, nullptr);
+    }
+}
+
+void trackCinematicCamera(QVector position, UnitWrapper target, float fov) {
+    Unit *track = target.GetUnit();
+    if (!track) {
+        VS_LOG(warning, "trackCinematicCamera: target unit is null or dead; camera left unchanged");
+        return;
+    }
+    if (Cockpit *cockpit = cinematicCockpit()) {
+        cockpit->SetCinematicCamera(position, track->Position(), Vector(0, 1, 0), fov, track);
+    }
+}
+
+void clearCinematicCamera() {
+    if (Cockpit *cockpit = cinematicCockpit()) {
+        cockpit->ClearCinematicCamera();
+    }
+}
+
+bool isCinematicCameraActive() {
+    Cockpit *cockpit = cinematicCockpit();
+    return cockpit && cockpit->CinematicCameraActive();
+}
 }
 PYTHON_INIT_INHERIT_GLOBALS(VS, FireAt);
 PYTHON_INIT_INHERIT_GLOBALS(VS, VegaStrike::EngineVersionData);
@@ -97,6 +134,10 @@ BOOST_PYTHON_MODULE(VS) {
     EXPORT_UTIL(getPlayerX, Unit())
     EXPORT_UTIL(GetMasterPartList, Unit())
     voidEXPORT_UTIL(setOwner)
+    voidEXPORT_UTIL(setCinematicCamera)
+    voidEXPORT_UTIL(trackCinematicCamera)
+    voidEXPORT_UTIL(clearCinematicCamera)
+    EXPORT_UTIL(isCinematicCameraActive, false)
     EXPORT_UTIL(getOwner, Unit())
     StarSystemExports();
 #undef EXPORT_UTIL

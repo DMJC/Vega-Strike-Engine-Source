@@ -53,6 +53,9 @@
 
 float Damageable::DealDamageToHull(const Vector &pnt, float damage) {
     Unit *unit = vega_dynamic_cast_ptr<Unit>(this);
+    if (unit->invulnerable) {
+        return 0;
+    }
 
     Damage dmg(0, damage); // Bypass shield with phase damage
     CoreVector attack_vector(pnt.i, pnt.j, pnt.k);
@@ -74,6 +77,9 @@ Damageable::~Damageable() = default;
 
 float Damageable::DealDamageToShield(const Vector &pnt, float &damage) {
     Unit *unit = vega_dynamic_cast_ptr<Unit>(this);
+    if (unit->invulnerable) {
+        return 0;
+    }
     Damage dmg(damage);
     CoreVector attack_vector(pnt.i, pnt.j, pnt.k);
     InflictedDamage inflicted_damage(3);

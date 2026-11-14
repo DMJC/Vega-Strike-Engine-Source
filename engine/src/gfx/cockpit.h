@@ -139,6 +139,19 @@ class GameCockpit : public Cockpit {
     //colors of blips/targetting boxes
     GFXColor friendly, enemy, neutral, targeted, targetting, planet;
 
+    ///Scripted cutscene camera; drives cam[CP_FIXED] while active
+    struct CinematicCamera {
+        bool active = false;
+        QVector position;
+        QVector look_at;
+        Vector up{0, 1, 0};
+        float fov = 0;              // <= 0: configured FOV
+        UnitContainer track;        // aim at this unit when set
+        VIEWSTYLE saved_view = CP_FRONT;
+    } cinematic;
+    ///Positions and aims cam[CP_FIXED] from `cinematic`
+    void ApplyCinematicCamera();
+
     void NextTurret();
 
     // Last observed values for edge-triggered events
@@ -281,6 +294,14 @@ public:
 
     ///Changes current camera to selected camera
     void SelectCamera(int) override;
+
+    void SetCinematicCamera(const QVector &position, const QVector &look_at, const Vector &up, float fov,
+            Unit *track) override;
+    void ClearCinematicCamera() override;
+
+    bool CinematicCameraActive() const override {
+        return cinematic.active;
+    }
 
     ///GFXLoadMatrix proper camera
     void SetViewport() override {
