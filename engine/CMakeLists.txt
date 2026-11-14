@@ -627,6 +627,7 @@ SET(VEGASTRIKE_SOURCES
     src/gldrv/gl_ffp_shader.cpp
     src/gldrv/gl_primitives.cpp
     src/gldrv/gl_renderer.cpp
+    src/gldrv/gl_render_target.cpp
     src/gldrv/gl_shader_translate.cpp
     src/gldrv/gl_clip.cpp
     src/gldrv/gl_fog.cpp

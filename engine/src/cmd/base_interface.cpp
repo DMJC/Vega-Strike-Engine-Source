@@ -173,11 +173,13 @@ static void SetupViewport() {
         // Map the configured-resolution letterbox onto native (actual) pixels.
         const int sw = configuration().graphics.resolution_x;
         const int sh = configuration().graphics.resolution_y;
-        float sx = sw > 0 ? (float)native_resolution_x / sw : 1.0f;
-        float sy = sh > 0 ? (float)native_resolution_y / sh : 1.0f;
+        int dw = 0, dh = 0;
+        GFXDrawableSize(dw, dh);
+        float sx = sw > 0 ? (float)dw / sw : 1.0f;
+        float sy = sh > 0 ? (float)dh / sh : 1.0f;
         glViewport((int)(vx * sx), (int)(vy * sy), (int)(vw * sx), (int)(vh * sy));
     } else {
-        glViewport(0, 0, native_resolution_x, native_resolution_y);
+        GFXViewPort(0, 0, 0, 0);
     }
 }
 
@@ -1651,7 +1653,7 @@ void BaseInterface::Draw() {
     }
 
     float x, y;
-    glViewport(0, 0, native_resolution_x, native_resolution_y);
+    GFXViewPort(0, 0, 0, 0);
     const float base_text_background_alpha = configuration().graphics.bases.text_background_alpha_flt;
 
     curtext.GetCharSize(x, y);
@@ -1682,7 +1684,7 @@ void BaseInterface::Draw() {
     SetupViewport();
     EndGUIFrame(mousePointerStyle);
 
-    glViewport(0, 0, native_resolution_x, native_resolution_y);
+    GFXViewPort(0, 0, 0, 0);
 
     Unit *un = caller.GetUnit();
     Unit *base = baseun.GetUnit();

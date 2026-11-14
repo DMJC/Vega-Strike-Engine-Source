@@ -67,13 +67,29 @@ typedef struct __GLsync *vsglSync;
     X(void, GenerateMipmap, (GLenum target)) \
     X(const GLubyte *, GetStringi, (GLenum name, GLuint index)) \
     X(void, GetFramebufferAttachmentParameteriv, (GLenum target, GLenum attachment, GLenum pname, GLint *params)) \
-    X(void, BindFragDataLocation, (GLuint program, GLuint color, const GLchar *name))
+    X(void, BindFragDataLocation, (GLuint program, GLuint color, const GLchar *name)) \
+    X(void, GenFramebuffers, (GLsizei n, GLuint *framebuffers)) \
+    X(void, DeleteFramebuffers, (GLsizei n, const GLuint *framebuffers)) \
+    X(void, BindFramebuffer, (GLenum target, GLuint framebuffer)) \
+    X(GLenum, CheckFramebufferStatus, (GLenum target)) \
+    X(void, FramebufferTexture2D, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
+    X(void, FramebufferTextureLayer, (GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer)) \
+    X(void, FramebufferRenderbuffer, (GLenum target, GLenum attachment, GLenum renderbuffertarget, \
+            GLuint renderbuffer)) \
+    X(void, BlitFramebuffer, (GLint src_x0, GLint src_y0, GLint src_x1, GLint src_y1, GLint dst_x0, GLint dst_y0, \
+            GLint dst_x1, GLint dst_y1, GLbitfield mask, GLenum filter)) \
+    X(void, GenRenderbuffers, (GLsizei n, GLuint *renderbuffers)) \
+    X(void, DeleteRenderbuffers, (GLsizei n, const GLuint *renderbuffers)) \
+    X(void, BindRenderbuffer, (GLenum target, GLuint renderbuffer)) \
+    X(void, RenderbufferStorageMultisample, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, \
+            GLsizei height))
 
 #define VSGL_OPTIONAL_FUNCTIONS(X) \
     X(void, BufferStorage, (GLenum target, ptrdiff_t size, const void *data, GLbitfield flags)) \
     X(void, DebugMessageCallback, (vsglDebugProc callback, const void *user_param)) \
     X(void, DebugMessageControl, (GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint *ids, \
-            GLboolean enabled))
+            GLboolean enabled)) \
+    X(void, InvalidateFramebuffer, (GLenum target, GLsizei num_attachments, const GLenum *attachments))
 
 #define VSGL_DECLARE_FUNCTION(ret, name, params) \
     typedef ret (APIENTRY *vsgl_pfn_##name) params; \
@@ -117,6 +133,49 @@ VSGL_OPTIONAL_FUNCTIONS(VSGL_DECLARE_FUNCTION)
 #endif
 #ifndef GL_FRAMEBUFFER
 #define GL_FRAMEBUFFER 0x8D40
+#endif
+#ifndef GL_READ_FRAMEBUFFER
+#define GL_READ_FRAMEBUFFER 0x8CA8
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
+#endif
+#ifndef GL_FRAMEBUFFER_COMPLETE
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#endif
+#ifndef GL_RENDERBUFFER
+#define GL_RENDERBUFFER 0x8D41
+#endif
+#ifndef GL_COLOR_ATTACHMENT0
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+#endif
+#ifndef GL_DEPTH_ATTACHMENT
+#define GL_DEPTH_ATTACHMENT 0x8D00
+#endif
+#ifndef GL_STENCIL_ATTACHMENT
+#define GL_STENCIL_ATTACHMENT 0x8D20
+#endif
+#ifndef GL_DEPTH_STENCIL_ATTACHMENT
+#define GL_DEPTH_STENCIL_ATTACHMENT 0x821A
+#endif
+#ifndef GL_DEPTH24_STENCIL8
+#define GL_DEPTH24_STENCIL8 0x88F0
+#endif
+#ifndef GL_RGBA8
+#define GL_RGBA8 0x8058
+#endif
+#ifndef GL_SRGB8_ALPHA8
+#define GL_SRGB8_ALPHA8 0x8C43
+#endif
+#ifndef GL_FRAMEBUFFER_SRGB
+#define GL_FRAMEBUFFER_SRGB 0x8DB9
+#endif
+#ifndef GL_MAX_SAMPLES
+#define GL_MAX_SAMPLES 0x8D57
+#endif
+#ifndef GL_MAX_RENDERBUFFER_SIZE
+#define GL_MAX_RENDERBUFFER_SIZE 0x84E8
+#endif
+#ifndef GL_TEXTURE_2D_ARRAY
+#define GL_TEXTURE_2D_ARRAY 0x8C1A
 #endif
 #ifndef GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING
 #define GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING 0x8210

@@ -426,6 +426,9 @@ void Universe::StartDraw() {
     RESETTIME();
 #endif
     GFXBeginScene();
+    // With graphics.render_scale != 1 the scene, cockpit and HUD draw offscreen
+    // until GFXEndSceneRender() scales them onto the window.
+    GFXBeginSceneRender();
     // ImGui Init
     ImGui_ApplyPendingFontSize();   // apply a pending font-size change before laying out
     ImGui_ImplOpenGL3_NewFrame();
@@ -537,6 +540,9 @@ void Universe::StartDraw() {
                    __FUNCTION__ % (process_input_end_time - process_input_start_time)));
 #endif
     }
+    // Back to the window before the screenshot reads it and ImGui/the config
+    // overlay draw over it at full window resolution.
+    GFXEndSceneRender();
     if (screenshotkey) {
         KBData b;
         Screenshot(b, PRESS);

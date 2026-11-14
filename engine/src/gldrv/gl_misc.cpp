@@ -26,6 +26,7 @@
  */
 
 
+#include <cmath>
 #include <cstring>
 #define GL_MISC_CPP
 #include "gl_globals.h"
@@ -308,14 +309,30 @@ void GFXCallList(int list) {
 void GFXDeleteList(int list) {
 }
 
+// x/y/xsize/ysize are in configured-resolution pixels; the scissor box is scaled
+// into the pixels of whatever is being drawn into (window or offscreen target).
 void GFXSubwindow(int x, int y, int xsize, int ysize) {
-    glViewport(0, 0, native_resolution_x, native_resolution_y);
-    glScissor(x, y, xsize, ysize);
-    if (x == 0 && y == 0 && xsize == configuration().graphics.resolution_x && ysize == configuration().graphics.resolution_y) {
+    int width = 0;
+    int height = 0;
+    GFXDrawableSize(width, height);
+    glViewport(0, 0, width, height);
+    const int res_x = configuration().graphics.resolution_x;
+    const int res_y = configuration().graphics.resolution_y;
+    if (x == 0 && y == 0 && xsize == res_x && ysize == res_y) {
         glDisable(GL_SCISSOR_TEST);
-    } else {
-        glEnable(GL_SCISSOR_TEST);
+        return;
     }
+    if (res_x > 0 && res_y > 0 && (width != res_x || height != res_y)) {
+        const double sx = static_cast<double>(width) / res_x;
+        const double sy = static_cast<double>(height) / res_y;
+        const int x0 = static_cast<int>(std::lround(x * sx));
+        const int y0 = static_cast<int>(std::lround(y * sy));
+        glScissor(x0, y0, static_cast<int>(std::lround((x + xsize) * sx)) - x0,
+                static_cast<int>(std::lround((y + ysize) * sy)) - y0);
+    } else {
+        glScissor(x, y, xsize, ysize);
+    }
+    glEnable(GL_SCISSOR_TEST);
 }
 
 void GFXSubwindow(float x, float y, float xsize, float ysize) {

@@ -499,6 +499,13 @@ vector<PickData> * /*GFXDRVAPI*/ GFXEndPick();
 void /*GFXDRVAPI*/ GFXSubwindow(int x, int y, int xsize, int ysize);
 void /*GFXDRVAPI*/ GFXSubwindow(float x, float y, float xsize, float ysize);
 
+///Size in pixels of what is being drawn into: the bound offscreen target, else the window
+void /*GFXDRVAPI*/ GFXDrawableSize(int &width, int &height);
+///Starts the in-flight scene; with graphics.render_scale != 1 this redirects drawing offscreen
+void /*GFXDRVAPI*/ GFXBeginSceneRender();
+///Ends the in-flight scene, scaling any offscreen image onto the window (which is left bound)
+void /*GFXDRVAPI*/ GFXEndSceneRender();
+
 //Coordinate system conversion
 ///convertes eyespace to 3space at the near plane
 Vector /*GFXDRVAPI*/ GFXDeviceToEye(int x, int y);

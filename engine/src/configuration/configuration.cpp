@@ -5417,6 +5417,12 @@ void vega_config::Configuration::load_config(const std::string& json_text) {
                 graphics.reflectivity_flt = boost::json::value_to<float>(*reflectivity_value_ptr);
             }
 
+            const boost::json::value * render_scale_value_ptr = graphics_object.if_contains("render_scale");
+            if (render_scale_value_ptr != nullptr) {
+                graphics.render_scale_dbl = boost::json::value_to<double>(*render_scale_value_ptr);
+                graphics.render_scale_flt = boost::json::value_to<float>(*render_scale_value_ptr);
+            }
+
             const boost::json::value * resolution_x_value_ptr = graphics_object.if_contains("resolution_x");
             if (resolution_x_value_ptr != nullptr) {
                 graphics.resolution_x = boost::json::value_to<int>(*resolution_x_value_ptr);

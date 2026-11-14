@@ -1840,6 +1840,11 @@ namespace vega_config {
         bool reflection = true;
         double reflectivity_dbl = 0.8;
         float reflectivity_flt = 0.8;
+        // Render the in-flight scene offscreen at this multiple of the window size, then
+        // scale it onto the window: >1 supersamples, <1 trades sharpness for speed.
+        // 1.0 draws straight into the window. Clamped to 0.25..4.
+        double render_scale_dbl = 1.0;
+        float render_scale_flt = 1.0;
         int resolution_x = 1280;
         int resolution_y = 960;
         std::string rgb_pixel_format = "undefined";

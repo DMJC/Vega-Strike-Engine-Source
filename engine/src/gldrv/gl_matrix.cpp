@@ -209,7 +209,10 @@ void /*GFXDRVAPI*/ GFXLoadMatrixProjection(const float matrix[16]) {
 }
 
 void /*GFXDRVAPI*/ GFXViewPort(int minx, int miny, int maxx, int maxy) {
-    glViewport(0, 0, native_resolution_x, native_resolution_y);
+    int width = 0;
+    int height = 0;
+    GFXDrawableSize(width, height);
+    glViewport(0, 0, width, height);
 }
 
 void /*GFXDRVAPI*/ GFXCenterCamera(bool Enter) {
