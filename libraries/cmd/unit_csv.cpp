@@ -701,10 +701,20 @@ void Unit::LoadRow(std::string unit_identifier, string modification, bool saved_
     // Replaced by below: AddSounds( this, OPTIM_GET( row, table, Sounds ) );
     this->addSounds(&nextElement, UnitCSVFactory::GetVariable(unit_key, "Sounds", std::string()));
 
-    LoadCockpit(this, UnitCSVFactory::GetVariable(unit_key, "Cockpit", std::string()));
-    pImage->CockpitCenter.i = UnitCSVFactory::GetVariable(unit_key, "CockpitX", 0.0f) * xml.unitscale;
-    pImage->CockpitCenter.j = UnitCSVFactory::GetVariable(unit_key, "CockpitY", 0.0f) * xml.unitscale;
-    pImage->CockpitCenter.k = UnitCSVFactory::GetVariable(unit_key, "CockpitZ", 0.0f) * xml.unitscale;
+    // Saved player ships (player_ship_N) written before Cockpit was serialized
+    // have no cockpit entry; take it from the original unit named by "Key"
+    // so they don't come back with the fallback disabled-cockpit.cpt.
+    std::string cockpit_key = unit_key;
+    if (UnitCSVFactory::GetVariable(unit_key, "Cockpit", std::string()).empty()) {
+        const std::string original_key = UnitCSVFactory::GetVariable(unit_key, "Key", std::string());
+        if (!original_key.empty() && original_key != unit_key) {
+            cockpit_key = original_key;
+        }
+    }
+    LoadCockpit(this, UnitCSVFactory::GetVariable(cockpit_key, "Cockpit", std::string()));
+    pImage->CockpitCenter.i = UnitCSVFactory::GetVariable(cockpit_key, "CockpitX", 0.0f) * xml.unitscale;
+    pImage->CockpitCenter.j = UnitCSVFactory::GetVariable(cockpit_key, "CockpitY", 0.0f) * xml.unitscale;
+    pImage->CockpitCenter.k = UnitCSVFactory::GetVariable(cockpit_key, "CockpitZ", 0.0f) * xml.unitscale;
 
 
     // Hull
@@ -916,8 +926,8 @@ const std::map<std::string, std::string> Unit::UnitToMap() {
 
     // Take some immutable stats directly from the original unit
     const std::string immutable_stats[] = {"Directory", "STATUS", "Combat_Role", "Hud_image",
-                                           "Unit_Scale", "CockpitZ", "Mesh", "Prohibited_Upgrades",
-                                           "Light"};
+                                           "Unit_Scale", "Cockpit", "CockpitX", "CockpitY", "CockpitZ",
+                                           "Mesh", "Prohibited_Upgrades", "Light"};
 
     for(const auto& stat : immutable_stats) {
         unit[stat] = UnitCSVFactory::GetVariable(unit_key, stat, std::string());
