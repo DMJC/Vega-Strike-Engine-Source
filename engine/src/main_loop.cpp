@@ -764,6 +764,11 @@ using namespace CockpitKeys;
 
 void InitializeInput() {
     BindKey(SDL_SCANCODE_ESCAPE, 0, 0, Quit, KBData());     //always have quit on esc
+    // Install the in-flight keyboard handler. It was otherwise only installed
+    // on returning from a base, nav or config screen, so in a mission that
+    // starts in flight no key binding worked until then. (A start docked at
+    // a base installs the base screen's handler after this.)
+    RestoreKB();
 }
 
 void IncrementStartupVariable() {

@@ -173,7 +173,22 @@ int getModifier(bool alton, bool cntrlon, bool shifton) {
     return cntrlon ? KB_MOD_CTRL : (alton ? KB_MOD_ALT : (shifton ? KB_MOD_SHIFT : 0));
 }
 
+// Esc, Space and Enter skip a cutscene while the cinematic camera is on,
+// instead of reaching their normal bindings (quit, fire, missile)
+static bool TakeCutsceneSkipKey(unsigned int ch, bool pressed) {
+    if (!pressed || !(ch == WSK_ESCAPE || ch == ' ' || ch == WSK_RETURN || ch == WSK_KP_ENTER)) {
+        return false;
+    }
+    Cockpit *cockpit = _Universe ? _Universe->AccessCockpit() : nullptr;
+    return cockpit && cockpit->RequestCinematicSkip();
+}
+
+// Note: despite its name, `release` is true when the key is pressed (winsys
+// passes SDL's key.down), as kbGetInput's `pressed` parameter shows
 void glut_keyboard_cb(unsigned int ch, unsigned int mod, bool release, int x, int y) {
+    if (TakeCutsceneSkipKey(ch, release)) {
+        return;
+    }
     bool shifton = false;
     int alton = false;
     int ctrlon = false;

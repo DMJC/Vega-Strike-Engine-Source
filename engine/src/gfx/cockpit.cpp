@@ -2571,6 +2571,7 @@ void GameCockpit::SetCinematicCamera(const QVector &position, const QVector &loo
     if (!cinematic.active) {
         cinematic.saved_view = view;
         cinematic.active = true;
+        cinematic.skip_requested = false;
     }
     cinematic.position = position;
     cinematic.look_at = look_at;
@@ -2587,11 +2588,37 @@ void GameCockpit::ClearCinematicCamera() {
         return;
     }
     cinematic.active = false;
+    cinematic.skip_requested = false;
     cinematic.track.SetUnit(nullptr);
     view = cinematic.saved_view;
     // Back to the configured FOV; SetupViewPort re-applies the warp FOV link
     cam[CP_FIXED].SetFov(configuration().graphics.fov_flt);
     SelectCamera(view);
+}
+
+bool GameCockpit::RequestCinematicSkip() {
+    if (!cinematic.active) {
+        return false;
+    }
+    // A request no script has picked up within this long means nothing is
+    // listening: let the key through, so Esc can still reach the quit dialog
+    const double unanswered_timeout = 1.0;
+    const double now = realTime();
+    if (cinematic.skip_requested && now - cinematic.skip_requested_at > unanswered_timeout) {
+        cinematic.skip_requested = false;
+        return false;
+    }
+    if (!cinematic.skip_requested) {
+        cinematic.skip_requested = true;
+        cinematic.skip_requested_at = now;
+    }
+    return true;
+}
+
+bool GameCockpit::TakeCinematicSkip() {
+    const bool requested = cinematic.skip_requested;
+    cinematic.skip_requested = false;
+    return requested;
 }
 
 void GameCockpit::ApplyCinematicCamera() {

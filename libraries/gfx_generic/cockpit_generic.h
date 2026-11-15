@@ -412,6 +412,18 @@ public:
         return false;
     }
 
+    ///A skip key was pressed while the cinematic camera was active. Returns
+    ///true if the key press was taken as a skip request (and must not reach
+    ///its normal binding)
+    virtual bool RequestCinematicSkip() {
+        return false;
+    }
+
+    ///Returns, and clears, a pending skip request for the script playing the cutscene
+    virtual bool TakeCinematicSkip() {
+        return false;
+    }
+
     ///GFXLoadMatrix proper camera
     virtual void SetViewport() {
     }

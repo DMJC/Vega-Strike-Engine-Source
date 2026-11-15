@@ -148,6 +148,8 @@ class GameCockpit : public Cockpit {
         float fov = 0;              // <= 0: configured FOV
         UnitContainer track;        // aim at this unit when set
         VIEWSTYLE saved_view = CP_FRONT;
+        bool skip_requested = false;
+        double skip_requested_at = 0;   // real time of the request
     } cinematic;
     ///Positions and aims cam[CP_FIXED] from `cinematic`
     void ApplyCinematicCamera();
@@ -302,6 +304,9 @@ public:
     bool CinematicCameraActive() const override {
         return cinematic.active;
     }
+
+    bool RequestCinematicSkip() override;
+    bool TakeCinematicSkip() override;
 
     ///GFXLoadMatrix proper camera
     void SetViewport() override {

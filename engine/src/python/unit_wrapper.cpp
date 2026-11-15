@@ -102,6 +102,12 @@ void clearCinematicCamera() {
     }
 }
 
+// True once after Esc, Space or Enter was pressed during the cinematic camera
+bool takeCinematicSkip() {
+    Cockpit *cockpit = cinematicCockpit();
+    return cockpit && cockpit->TakeCinematicSkip();
+}
+
 // Docking cutscenes (see cmd/docking_cutscenes.h)
 void setDockingCutscenes(bool enabled) {
     DockingCutscenes::SetEnabled(enabled);
@@ -164,6 +170,7 @@ BOOST_PYTHON_MODULE(VS) {
     voidEXPORT_UTIL(trackCinematicCamera)
     voidEXPORT_UTIL(clearCinematicCamera)
     EXPORT_UTIL(isCinematicCameraActive, false)
+    EXPORT_UTIL(takeCinematicSkip, false)
     voidEXPORT_UTIL(setDockingCutscenes)
     EXPORT_UTIL(getDockingCutscenes, false)
     EXPORT_UTIL(takePendingLanding, UnitWrapper())
