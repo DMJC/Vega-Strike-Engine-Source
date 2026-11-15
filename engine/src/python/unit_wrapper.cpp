@@ -40,6 +40,7 @@ typedef boost::python::dict BoostPythonDictionary;
 #include "src/universe_util.h"
 #include "src/universe.h"
 #include "gfx_generic/cockpit_generic.h"
+#include "cmd/docking_cutscenes.h"
 #include "cmd/unit_util.h"
 #include "root_generic/faction_generic.h"
 #include "cmd/ai/fire.h"
@@ -101,6 +102,31 @@ void clearCinematicCamera() {
     }
 }
 
+// Docking cutscenes (see cmd/docking_cutscenes.h)
+void setDockingCutscenes(bool enabled) {
+    DockingCutscenes::SetEnabled(enabled);
+}
+
+bool getDockingCutscenes() {
+    return DockingCutscenes::Enabled();
+}
+
+UnitWrapper takePendingLanding() {
+    return UnitWrapper(DockingCutscenes::TakePendingLanding());
+}
+
+UnitWrapper takePendingTakeoff() {
+    return UnitWrapper(DockingCutscenes::TakePendingTakeoff());
+}
+
+bool completePlayerLanding(UnitWrapper planet) {
+    return DockingCutscenes::PlayerCompleteLanding(getPlayer(), planet.GetUnit());
+}
+
+void cancelPlayerLanding() {
+    DockingCutscenes::CancelLanding();
+}
+
 bool isCinematicCameraActive() {
     Cockpit *cockpit = cinematicCockpit();
     return cockpit && cockpit->CinematicCameraActive();
@@ -138,6 +164,12 @@ BOOST_PYTHON_MODULE(VS) {
     voidEXPORT_UTIL(trackCinematicCamera)
     voidEXPORT_UTIL(clearCinematicCamera)
     EXPORT_UTIL(isCinematicCameraActive, false)
+    voidEXPORT_UTIL(setDockingCutscenes)
+    EXPORT_UTIL(getDockingCutscenes, false)
+    EXPORT_UTIL(takePendingLanding, UnitWrapper())
+    EXPORT_UTIL(takePendingTakeoff, UnitWrapper())
+    EXPORT_UTIL(completePlayerLanding, false)
+    voidEXPORT_UTIL(cancelPlayerLanding)
     EXPORT_UTIL(getOwner, Unit())
     StarSystemExports();
 #undef EXPORT_UTIL

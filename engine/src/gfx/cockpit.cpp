@@ -88,6 +88,7 @@
 #include "cmd/weapon_info.h"
 #include "gfx/cockpit_gfx.h"
 #include "cmd/dock_utils.h"
+#include "cmd/docking_cutscenes.h"
 #include "src/vega_cast_utils.h"
 #include "resource/random_utils.h"
 
@@ -280,6 +281,16 @@ void GameCockpit::AutoLanding() {
     if (autolanding_enable) {
         Unit *player = GetParent();
         if (player == nullptr) {
+            return;
+        }
+        // Nothing to land on while docked. Docking cutscenes: a landing shot
+        // does its own docking (an extra dock key press would undock again),
+        // and right after launching the player is still on the pad until
+        // the takeoff shot takes over
+        DockingCutscenes::State &cutscenes = DockingCutscenes::state();
+        if ((player->DockedOrDocking() & (Unit::DOCKED_INSIDE | Unit::DOCKED))
+                || cutscenes.landing_in_progress || cutscenes.pending_takeoff.GetUnit() != nullptr
+                || cinematic.active) {
             return;
         }
 
@@ -2695,6 +2706,9 @@ void GameCockpit::SetParent(Unit *unit, const QVector &startloc) {
 void GameCockpit::OnDockEnd(Unit *station, Unit *ship) {
     if (ship->IsPlayerShip()) {
         updateRadar(ship);
+        if (DockingCutscenes::Enabled()) {
+            DockingCutscenes::state().pending_takeoff.SetUnit(station);
+        }
     }
 }
 

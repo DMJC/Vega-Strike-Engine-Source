@@ -64,6 +64,8 @@
 #include "cmd/unit_util.h"
 #include "resource/cargo.h"
 #include "root_generic/vega_random.h"
+#include "cmd/dock_utils.h"
+#include "cmd/docking_cutscenes.h"
 
 FireKeyboard::FireKeyboard(unsigned int whichplayer, unsigned int whichjoystick) : Order(WEAPON, 0) {
     memset(savedTargets, 0, sizeof(void *) * NUMSAVEDTARGETS);
@@ -1384,6 +1386,54 @@ static bool SuperDock(Unit *parent, Unit *target) {
     return false;
 }
 
+// Docking cutscenes: a dock with a planet that would succeed is handed to
+// the script instead (see cmd/docking_cutscenes.h). Returns true when the
+// attempt was taken over and must not dock now.
+static bool DeferLandingForCutscene(Unit *parent, Unit *targ, int severity) {
+    DockingCutscenes::State &s = DockingCutscenes::state();
+    if (!s.enabled || s.completing || !targ->isPlanet() || targ->isJumppoint()) {
+        return false;
+    }
+    if (_Universe->whichPlayerStarship(parent) < 0 || (parent->DockedOrDocking() & (Unit::DOCKED_INSIDE | Unit::DOCKED))) {
+        return false;
+    }
+    // A deferred landing the script never picked up means no script is
+    // running any more: forget it and dock normally
+    const float pickup_timeout = 2.0F;
+    if (s.landing_in_progress && s.pending_landing.GetUnit()
+            && UniverseUtil::GetGameTime() - s.deferred_at > pickup_timeout) {
+        VS_LOG(warning, "Deferred landing was not picked up by a script; docking normally");
+        DockingCutscenes::CancelLanding();
+        return false;
+    }
+    if (s.landing_in_progress) {
+        // The landing shot is playing; ignore further dock attempts
+        return true;
+    }
+    bool would_dock;
+    if (severity == 0) {
+        would_dock = targ->IsCleared(parent) && CanDock(targ, parent) != -1;
+    } else {
+        would_dock = false;
+        if (UnitUtil::isCloseEnoughToDock(parent, targ) && UnitUtil::isDockableUnit(targ)) {
+            for (const auto &port : targ->GetImageInformation().dockingports) {
+                if (!port.IsOccupied()) {
+                    would_dock = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (!would_dock) {
+        return false;
+    }
+    s.landing_in_progress = true;
+    s.deferred_at = UniverseUtil::GetGameTime();
+    s.pending_landing.SetUnit(targ);
+    VS_LOG(info, (boost::format("Landing on %1% deferred for a cutscene") % targ->getFullname()));
+    return true;
+}
+
 static bool TryDock(Unit *parent, Unit *targ, unsigned char playa, int severity) {
     const float min_docking_relationship = configuration().ai.min_docking_relationship_flt;
     const bool can_dock_to_enemy_base = configuration().ai.can_dock_to_enemy_base;
@@ -1401,6 +1451,9 @@ static bool TryDock(Unit *parent, Unit *targ, unsigned char playa, int severity)
     bool isDone = false;
     if (targ->getRelation(parent) >= min_docking_relationship
             || (can_dock_to_enemy_base && UnitUtil::getFlightgroupName(targ) == "Base")) {
+        if (DeferLandingForCutscene(parent, targ, severity)) {
+            return true;
+        }
         bool hasDock = severity == 0 ? parent->Dock(targ) : SuperDock(parent, targ);
 
         CommunicationMessage c(targ, parent, anim, gender);
@@ -1428,6 +1481,35 @@ static bool TryDock(Unit *parent, Unit *targ, unsigned char playa, int severity)
         }
     }
     return isDone;
+}
+
+bool DockingCutscenes::PlayerCompleteLanding(Unit *parent, Unit *targ) {
+    if (parent == nullptr || targ == nullptr) {
+        return false;
+    }
+    const int playa = _Universe->whichPlayerStarship(parent);
+    if (playa < 0) {
+        return false;
+    }
+    // Already there: dock attempts while docked would undock again
+    if (targ->isDocked(parent)) {
+        CancelLanding();
+        return true;
+    }
+    State &s = state();
+    s.completing = true;
+    const int maxseverity = configuration().ai.dock_to_area ? 2 : 1;
+    bool done = false;
+    for (int severity = 0; severity < maxseverity && !done; ++severity) {
+        targ->RequestClearance(parent);
+        done = TryDock(parent, targ, static_cast<unsigned char>(playa), severity);
+        parent->EndRequestClearance(targ);
+    }
+    s.completing = false;
+    if (done) {
+        CancelLanding();
+    }
+    return done;
 }
 
 static bool ExecuteRequestClearenceKey(Unit *parent, Unit *endt) {
