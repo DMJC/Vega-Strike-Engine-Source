@@ -34,6 +34,7 @@
 
 #include <boost/format.hpp>
 #include <algorithm>
+#include <cmath>
 
 // Which docking rule applies: the simple "dock when close" test, or the docking zones you fly the
 // ship into. An empty mode means the setting is not in the config yet, in which case the older
@@ -247,9 +248,31 @@ std::string GetDockingText(Unit *unit, Unit *target, double range) {
 }
 
 
+/// "1,234,567" (thousands separated by commas)
+static std::string GroupThousands(double value) {
+    std::string digits = (boost::format("%.0lf") % std::fabs(value)).str();
+    std::string grouped;
+    for (size_t i = 0; i < digits.size(); ++i) {
+        if (i > 0 && (digits.size() - i) % 3 == 0) {
+            grouped += ',';
+        }
+        grouped += digits[i];
+    }
+    return (value < 0 ? "-" : "") + grouped;
+}
+
 std::string PrettyDistanceString(double distance) {
     if (configuration().physics.game_speed_lying) {
         distance /= configuration().physics.game_speed_dbl;
+    }
+    distance *= configuration().graphics.hud.distance_display_scale_dbl;
+
+    if (configuration().graphics.hud.distance_display_style == "short") {
+        // Metres up to a thousand kilometres, then kilometres
+        if (distance < 1000000.0) {
+            return GroupThousands(distance) + " m";
+        }
+        return GroupThousands(distance / 1000.0) + " km";
     }
 
     // Distance in km

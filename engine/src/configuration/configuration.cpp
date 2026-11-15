@@ -6154,6 +6154,17 @@ void vega_config::Configuration::load_config(const std::string& json_text) {
                 graphics.hud.already_near_message = boost::json::value_to<std::string>(*already_near_message_value_ptr);
             }
 
+            const boost::json::value * distance_display_scale_value_ptr = hud_object.if_contains("distance_display_scale");
+            if (distance_display_scale_value_ptr != nullptr) {
+                graphics.hud.distance_display_scale_dbl = boost::json::value_to<double>(*distance_display_scale_value_ptr);
+                graphics.hud.distance_display_scale_flt = boost::json::value_to<float>(*distance_display_scale_value_ptr);
+            }
+
+            const boost::json::value * distance_display_style_value_ptr = hud_object.if_contains("distance_display_style");
+            if (distance_display_style_value_ptr != nullptr) {
+                graphics.hud.distance_display_style = boost::json::value_to<std::string>(*distance_display_style_value_ptr);
+            }
+
             const boost::json::value * armor_hull_size_value_ptr = hud_object.if_contains("armor_hull_size");
             if (armor_hull_size_value_ptr != nullptr) {
                 graphics.hud.armor_hull_size_dbl = boost::json::value_to<double>(*armor_hull_size_value_ptr);

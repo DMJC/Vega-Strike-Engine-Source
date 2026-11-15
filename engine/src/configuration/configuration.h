@@ -2045,6 +2045,14 @@ namespace vega_config {
 
         struct {
             std::string already_near_message = "#ff0000Already Near#000000";
+            /// Multiplies every distance shown to the player (target range,
+            /// docking distance), e.g. 6 to show a scaled-down universe at its
+            /// original game's distances. Display only: physics is unchanged.
+            double distance_display_scale_dbl = 1.0;
+            float distance_display_scale_flt = 1.0F;
+            /// How distances are written: "long" ("909 meters", "12.50 kilometers",
+            /// "1.20 light seconds") or "short" ("5,454 m", "123,456 km")
+            std::string distance_display_style = "long";
             double armor_hull_size_dbl = 0.55;
         float armor_hull_size_flt = 0.55;
             std::string asteroids_near_message = "#ff0000Asteroids Near#000000";
