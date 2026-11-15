@@ -55,9 +55,10 @@
  *   night      brightness of the unlit side, 0..1
  *   glow       true: only adds light (for glows, e.g. round jump points);
  *              false: air that also veils what is behind it
- * Jump points are styled by their texture's name too ("jump" for jump.ani);
- * with "night": 1 a halo is lit evenly, ignoring the sun. Suns never get a
- * halo.
+ * Jump points are styled by their texture's name too ("jump" for jump.ani),
+ * and suns by the type "star"; a star's halo takes the star's own colour,
+ * tinted by the entry's color (white: exactly the star's). With "night": 1
+ * a halo is lit evenly, ignoring the sun.
  */
 namespace PlanetHalos {
 
@@ -76,8 +77,10 @@ const Style *StyleFor(const std::string &planet_name, const std::string &type);
 /// Drops halos queued but not drawn (a pass that did not run); call at the start of a frame
 void BeginFrame();
 
-/// Queues a halo for this frame (call when the planet is drawn)
-void Queue(const QVector &position, float radius, const Style *style);
+/// Queues a halo for this frame (call when the planet is drawn). With
+/// `own_color` (a star's colour), the halo takes that colour, tinted by the
+/// style's color (white: exactly the star's).
+void Queue(const QVector &position, float radius, const Style *style, const GFXColor *own_color = nullptr);
 
 /// Draws the halos of planets drawn in the far pass (end of Mesh::ProcessZFarMeshes)
 void DrawFar();

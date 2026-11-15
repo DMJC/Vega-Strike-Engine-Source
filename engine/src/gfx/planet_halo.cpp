@@ -64,6 +64,7 @@ struct Queued {
     QVector position;
     float radius;
     const Style *style;
+    GFXColor color;
 };
 
 std::vector<Queued> g_near;
@@ -204,7 +205,7 @@ void Draw(std::vector<Queued> &queue) {
         h.radius = q.radius;
         h.thickness = q.radius * q.style->thickness;
         h.falloff = q.style->falloff;
-        h.color = q.style->color;
+        h.color = q.color;
         h.density = q.style->density;
         h.night = q.style->night;
         h.additive = q.style->glow;
@@ -250,14 +251,24 @@ const Style *StyleFor(const std::string &planet_name, const std::string &type) {
     return g_table.has_wildcard ? g_table.wildcard.get() : nullptr;
 }
 
-void Queue(const QVector &position, float radius, const Style *style) {
+void Queue(const QVector &position, float radius, const Style *style, const GFXColor *own_color) {
     if (!style || radius <= 0 || style->thickness <= 0) {
         return;
+    }
+    GFXColor color = style->color;
+    if (own_color) {
+        // Keep the hue, scaled so the brightest component is 1 (star colours can exceed 1)
+        const float brightest = std::max(own_color->r, std::max(own_color->g, own_color->b));
+        if (brightest > 0) {
+            color = GFXColor(style->color.r * own_color->r / brightest,
+                             style->color.g * own_color->g / brightest,
+                             style->color.b * own_color->b / brightest, 1.0f);
+        }
     }
     // Same test Mesh::Draw uses to put a mesh in the far pass
     const double distance = (position - _Universe->AccessCamera()->GetPosition()).Magnitude();
     const double outer = radius * (1.0 + style->thickness);
-    Queued q{position, radius, style};
+    Queued q{position, radius, style, color};
     if (distance + outer > configuration().graphics.zfar_dbl) {
         g_far.push_back(q);
     } else {

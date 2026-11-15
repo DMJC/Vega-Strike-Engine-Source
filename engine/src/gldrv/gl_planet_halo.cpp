@@ -82,10 +82,9 @@ uniform vec3 u_sun;          // unit direction from the planet towards its light
 uniform vec3 u_color;
 uniform float u_density;     // optical depth multiplier
 uniform float u_night;       // brightness of the unlit side, 0..1
+uniform int u_steps;         // samples along the ray (more for deep atmospheres)
 
 out vec4 frag_color;
-
-const int kSteps = 16;
 
 void main() {
     vec3 dir = normalize(v_position);
@@ -106,10 +105,10 @@ void main() {
         discard;
     }
 
-    float dt = (t1 - t0) / float(kSteps);
+    float dt = (t1 - t0) / float(u_steps);
     float optical = 0.0;
     float lit = 0.0;
-    for (int i = 0; i < kSteps; ++i) {
+    for (int i = 0; i < u_steps; ++i) {
         vec3 p = dir * (t0 + (float(i) + 0.5) * dt) - u_center;
         float r = length(p);
         float altitude = max(r - u_radius, 0.0);
@@ -147,6 +146,7 @@ struct HaloProgram {
     GLint color = -1;
     GLint density = -1;
     GLint night = -1;
+    GLint steps = -1;
 };
 
 HaloProgram g_halo;
@@ -173,6 +173,7 @@ bool EnsureProgram() {
     g_halo.color = (*glGetUniformLocation_p)(p, "u_color");
     g_halo.density = (*glGetUniformLocation_p)(p, "u_density");
     g_halo.night = (*glGetUniformLocation_p)(p, "u_night");
+    g_halo.steps = (*glGetUniformLocation_p)(p, "u_steps");
 
     (*glGenVertexArrays_p)(1, &g_halo.vao);
     (*glGenBuffersARB_p)(1, &g_halo.vbo);
@@ -262,6 +263,10 @@ void GFXDrawPlanetHalos(const std::vector<GFXPlanetHalo> &halos) {
         (*glUniform3f_p)(g_halo.color, h.color.r, h.color.g, h.color.b);
         (*glUniform1f_p)(g_halo.density, h.density);
         (*glUniform1f_p)(g_halo.night, h.night);
+        // 16 samples for a thin atmosphere, up to 64 for a deep one (a star's
+        // corona), so its density gradient does not show as bands
+        const int steps = static_cast<int>(16.0f * (1.0f + 4.0f * h.thickness / std::max(h.radius, 1.0f)));
+        (*glUniform1i_p)(g_halo.steps, std::min(std::max(steps, 16), 64));
         glDrawArrays(GL_TRIANGLES, static_cast<GLint>(i * 6), 6);
     }
 

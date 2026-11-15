@@ -324,6 +324,15 @@ Planet::Planet(QVector x,
         }
     }
     if (ligh.size() > 0) {
+        // The star's colour, as its glow uses: its emissive colour, or its light's
+        star_color = getMaterialEmissive(ourmat);
+        if (configuration().graphics.glow_diffuse_star_light) {
+            star_color = ligh[0].ligh.GetProperties(DIFFUSE);
+        }
+        if (configuration().graphics.glow_ambient_star_light) {
+            star_color = ligh[0].ligh.GetProperties(AMBIENT);
+        }
+        has_star_color = true;
         const float bodyradius = configuration().graphics.star_body_radius_flt;
         const bool drawglow = configuration().graphics.draw_star_glow;
         const bool drawstar = configuration().graphics.draw_star_body;
@@ -460,10 +469,8 @@ void Planet::InitPlanet(QVector x,
     }
     string tempname = unitname.empty() ? ::getCargoUnitName(filename.c_str()) : unitname;
     setFullname(tempname);
-    // Halo, by planet name or type (the texture's name; "jump" for jump points); never for suns
-    if (!lights_num) {
-        halo_style = PlanetHalos::StyleFor(fullname, ::getCargoUnitName(filename.c_str()));
-    }
+    // Halo, by planet name or type: the texture's name ("jump" for jump points), "star" for suns
+    halo_style = PlanetHalos::StyleFor(fullname, lights_num ? std::string("star") : ::getCargoUnitName(filename.c_str()));
 
     int tmpfac = faction;
     if (UniverseUtil::LookupUnitStat(tempname, FactionUtil::GetFactionName(faction), "Cargo_Import").empty()) {
@@ -709,7 +716,8 @@ void Planet::Draw(const Transformation &quat, const Matrix &m) {
     Unit::Draw(quat, m);
     //}
     if (halo_style) {
-        PlanetHalos::Queue(cumulative_transformation.position, rSize(), halo_style);
+        PlanetHalos::Queue(cumulative_transformation.position, rSize(), halo_style,
+                has_star_color ? &star_color : nullptr);
     }
     QVector t(_Universe->AccessCamera()->GetPosition() - Position());
     static int counter = 0;

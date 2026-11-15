@@ -59,6 +59,9 @@ protected:
     Atmosphere *atmosphere = nullptr;
     ///Atmospheric halo style from planet_halos.json; nullptr for none
     const PlanetHalos::Style *halo_style = nullptr;
+    ///A star's own colour (as its glow uses), which its halo takes on
+    bool has_star_color = false;
+    GFXColor star_color{1, 1, 1, 1};
 
     ContinuousTerrain *terrain = nullptr;
     PlanetaryTransform *terraintrans = nullptr;
