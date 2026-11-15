@@ -53,7 +53,12 @@ void SphereMesh::ProcessDrawQueue(int whichpass, int whichdrawqueue, bool zsort,
 SphereMesh::~SphereMesh() = default;
 
 void SphereMesh::SelectCullFace(int whichdrawqueue) {
-    GFXEnable(CULLFACE);
+    // Closed spheres cull their back faces; see-through ones (jump points) show both sides
+    if (getCullFaceForcedOff()) {
+        GFXDisable(CULLFACE);
+    } else {
+        GFXEnable(CULLFACE);
+    }
 }
 
 void CityLights::ProcessDrawQueue(int whichpass, int whichdrawqueue, bool zsort, const QVector &sortctr) {

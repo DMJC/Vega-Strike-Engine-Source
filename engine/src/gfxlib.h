@@ -528,6 +528,7 @@ struct GFXPlanetHalo {
     GFXColor color{0.4f, 0.65f, 1.0f, 1.0f};
     float density = 0.15f;  ///how opaque the air is
     float night = 0.05f;    ///brightness of the unlit side, 0..1
+    bool additive = false;  ///glow: only adds light (otherwise it also veils what is behind it)
 };
 
 ///Draws halos with the current projection, testing against (not writing) depth

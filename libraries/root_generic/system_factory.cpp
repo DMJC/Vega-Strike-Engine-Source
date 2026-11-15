@@ -746,13 +746,14 @@ void SystemFactory::initializeMaterial(Object object, GFXMaterial &material) {
 }
 
 // Parse Alpha
-// TODO: refactor
 // Discussion of blendSrc and blendDst (Roy Falk)
-// If we don't have alpha, we use SRCALPHA/INVSRCALPHA
-// If we do but it's invalid, we use ONE/ZERO
-// Otherwise we actually parse it
-// This doesn't seem right
-void SystemFactory::initializeAlpha(Object object, BLENDFUNC blend_source, BLENDFUNC blend_destination) {
+// Without an alpha attribute the caller's defaults are kept.
+// An empty one gives ONE/ZERO (opaque); "true", or anything that is not two
+// blend functions, gives SRCALPHA/INVSRCALPHA; otherwise both are parsed
+// (e.g. "ONE ONE" for additive jump points).
+// The blend functions are returned through the references: they used to be
+// taken by value, so every alpha attribute was ignored.
+void SystemFactory::initializeAlpha(Object object, BLENDFUNC &blend_source, BLENDFUNC &blend_destination) {
     if (!object.attributes.count("alpha")) {
         return;
     }

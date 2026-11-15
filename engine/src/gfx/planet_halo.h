@@ -53,7 +53,11 @@
  *              (small: thin, sharp rim; large: deep, even haze)
  *   density    how opaque the air is (raise for smog)
  *   night      brightness of the unlit side, 0..1
- * Suns and jump points never get a halo.
+ *   glow       true: only adds light (for glows, e.g. round jump points);
+ *              false: air that also veils what is behind it
+ * Jump points are styled by their texture's name too ("jump" for jump.ani);
+ * with "night": 1 a halo is lit evenly, ignoring the sun. Suns never get a
+ * halo.
  */
 namespace PlanetHalos {
 
@@ -63,6 +67,7 @@ struct Style {
     float falloff = 0.3f;
     float density = 0.15f;
     float night = 0.05f;
+    bool glow = false;
 };
 
 /// The style for a planet, by its name and then its type; nullptr for no halo

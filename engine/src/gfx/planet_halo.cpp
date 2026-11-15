@@ -102,6 +102,13 @@ Style ParseStyle(const boost::json::object &o, const Style &base) {
     s.falloff = std::max(Number(o, "falloff", s.falloff), 0.01f);
     s.density = std::max(Number(o, "density", s.density), 0.0f);
     s.night = std::min(std::max(Number(o, "night", s.night), 0.0f), 1.0f);
+    if (const boost::json::value *v = o.if_contains("glow")) {
+        if (v->is_bool()) {
+            s.glow = v->as_bool();
+        } else {
+            VS_LOG(warning, (boost::format("%1%: \"glow\" should be true or false") % kConfigFile));
+        }
+    }
     return s;
 }
 
@@ -200,6 +207,7 @@ void Draw(std::vector<Queued> &queue) {
         h.color = q.style->color;
         h.density = q.style->density;
         h.night = q.style->night;
+        h.additive = q.style->glow;
         // Lit by the nearest sun; with none, by the camera's direction
         QVector to_light = camera - q.position;
         double best = -1;

@@ -283,7 +283,10 @@ void SphereMesh::Draw(float lod, bool centered, const Matrix &m) {
 }
 
 void SphereMesh::RestoreCullFace(int whichdrawqueue) {
-    //always right
+    //always right, unless this sphere turned culling off
+    if (getCullFaceForcedOff()) {
+        GFXEnable(CULLFACE);
+    }
 }
 
 float CityLights::wrapx = 1;

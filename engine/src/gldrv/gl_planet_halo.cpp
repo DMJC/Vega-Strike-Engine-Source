@@ -239,7 +239,6 @@ void GFXDrawPlanetHalos(const std::vector<GFXPlanetHalo> &halos) {
     glGetBooleanv(GL_DEPTH_WRITEMASK, &was_writing_depth);
 
     GFXPushBlendMode();
-    GFXBlendMode(ONE, INVSRCALPHA);   // premultiplied alpha
     GFXEnable(DEPTHTEST);
     GFXDisable(DEPTHWRITE);
     GFXDisable(CULLFACE);
@@ -253,6 +252,8 @@ void GFXDrawPlanetHalos(const std::vector<GFXPlanetHalo> &halos) {
     (*glUniform1f_p)(g_halo.scale, static_cast<float>(GFX_SCALE));
     for (size_t i = 0; i < drawn.size(); ++i) {
         const GFXPlanetHalo &h = *drawn[i];
+        // Premultiplied alpha: air veils what is behind it; a glow only adds light
+        GFXBlendMode(ONE, h.additive ? ONE : INVSRCALPHA);
         (*glUniform3f_p)(g_halo.center, h.center.i, h.center.j, h.center.k);
         (*glUniform1f_p)(g_halo.radius, h.radius);
         (*glUniform1f_p)(g_halo.thickness, h.thickness);

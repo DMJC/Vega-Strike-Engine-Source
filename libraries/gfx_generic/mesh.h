@@ -375,6 +375,17 @@ public:
         }
     }
 
+    ///Draws both sides of the faces (no back-face culling), e.g. for see-through
+    ///spheres such as jump points; with lodcascade, for every level of detail
+    void setCullFaceForcedOff(bool off, bool lodcascade = false) {
+        envMapAndLit = off ? ((envMapAndLit | 0x8) & ~0x4) : (envMapAndLit & ~0x8);
+        if (lodcascade && orig) {
+            for (int i = 0; i < numlods; i++) {
+                orig[i].setCullFaceForcedOff(off);
+            }
+        }
+    }
+
     GFXBOOL getCullFaceForcedOn() const {
         return (envMapAndLit & 0x4) != 0;
     }

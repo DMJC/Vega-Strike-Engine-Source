@@ -306,6 +306,10 @@ Planet::Planet(QVector x,
                 blendDst));
         meshdata.back()->setEnvMap(GFXFALSE);
         meshdata.back()->SetMaterial(ourmat);
+        if (!dest.empty()) {
+            // Jump points are see-through: show the far side and the inside too
+            meshdata.back()->setCullFaceForcedOff(true, true);
+        }
         meshdata.push_back(nullptr);
     }
     calculate_extent(false);
@@ -456,8 +460,8 @@ void Planet::InitPlanet(QVector x,
     }
     string tempname = unitname.empty() ? ::getCargoUnitName(filename.c_str()) : unitname;
     setFullname(tempname);
-    // Atmospheric halo, by planet name or type (the texture's name); never for suns or jump points
-    if (!lights_num && notJumppoint) {
+    // Halo, by planet name or type (the texture's name; "jump" for jump points); never for suns
+    if (!lights_num) {
         halo_style = PlanetHalos::StyleFor(fullname, ::getCargoUnitName(filename.c_str()));
     }
 
