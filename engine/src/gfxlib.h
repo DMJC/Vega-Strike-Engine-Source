@@ -518,6 +518,21 @@ enum GFXTEXTURECOORDMODE {
 };
 void GFXTextureCoordGenMode(int stage, GFXTEXTURECOORDMODE tex, const float params[4], const float paramt[4]);
 
+///An atmospheric halo round a planet (see gldrv/gl_planet_halo.cpp)
+struct GFXPlanetHalo {
+    Vector center;          ///planet centre relative to the camera, metres
+    float radius = 0;       ///planet radius
+    float thickness = 0;    ///atmosphere thickness above the surface
+    float falloff = 0.3f;   ///scale height of the air, as a fraction of the thickness
+    Vector sun{0, 0, 1};    ///unit direction from the planet towards its light
+    GFXColor color{0.4f, 0.65f, 1.0f, 1.0f};
+    float density = 0.15f;  ///how opaque the air is
+    float night = 0.05f;    ///brightness of the unlit side, 0..1
+};
+
+///Draws halos with the current projection, testing against (not writing) depth
+void GFXDrawPlanetHalos(const std::vector<GFXPlanetHalo> &halos);
+
 int GFXCreateProgram(const char *vertex, const char *fragment, const char *extra_defines);
 void GFXDestroyProgram(int program);
 //program created if necessary and active

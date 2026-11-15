@@ -50,6 +50,7 @@
 #include "collide2/CSopcodecollider.h"
 #include "cmd/images.h"
 #include "gfx/halo.h"
+#include "gfx/planet_halo.h"
 #include "gfx/animation.h"
 #include "cmd/script/flightgroup.h"
 #include "gfx/ring.h"
@@ -455,6 +456,10 @@ void Planet::InitPlanet(QVector x,
     }
     string tempname = unitname.empty() ? ::getCargoUnitName(filename.c_str()) : unitname;
     setFullname(tempname);
+    // Atmospheric halo, by planet name or type (the texture's name); never for suns or jump points
+    if (!lights_num && notJumppoint) {
+        halo_style = PlanetHalos::StyleFor(fullname, ::getCargoUnitName(filename.c_str()));
+    }
 
     int tmpfac = faction;
     if (UniverseUtil::LookupUnitStat(tempname, FactionUtil::GetFactionName(faction), "Cargo_Import").empty()) {
@@ -699,6 +704,9 @@ void Planet::Draw(const Transformation &quat, const Matrix &m) {
     //if(!inside) {
     Unit::Draw(quat, m);
     //}
+    if (halo_style) {
+        PlanetHalos::Queue(cumulative_transformation.position, rSize(), halo_style);
+    }
     QVector t(_Universe->AccessCamera()->GetPosition() - Position());
     static int counter = 0;
     if (counter++ > 100) {

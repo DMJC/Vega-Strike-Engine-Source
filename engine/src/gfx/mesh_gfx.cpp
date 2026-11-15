@@ -30,6 +30,7 @@
 // @brief  : draws meshes
 //====================================
 
+#include "gfx/planet_halo.h"
 #include <algorithm>
 #include "gfx_generic/mesh.h"
 #include "gfx/aux_texture.h"
@@ -626,6 +627,8 @@ void Mesh::ProcessZFarMeshes(bool nocamerasetup) {
             m->draw_queue[a].clear();
         }
         undrawn_meshes[a].clear();
+        // Halos of the far planets, against the far pass's depth
+        PlanetHalos::DrawFar();
     }
 
     GFXDeactivateShader();

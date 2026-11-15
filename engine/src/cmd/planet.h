@@ -46,6 +46,9 @@ class Atmosphere;
 struct AtmosphericFogMesh;
 class ContinuousTerrain;
 class PlanetaryTransform;
+namespace PlanetHalos {
+struct Style;
+}
 class Texture;
 
 class Planet : public Unit {
@@ -54,6 +57,8 @@ private:
 
 protected:
     Atmosphere *atmosphere = nullptr;
+    ///Atmospheric halo style from planet_halos.json; nullptr for none
+    const PlanetHalos::Style *halo_style = nullptr;
 
     ContinuousTerrain *terrain = nullptr;
     PlanetaryTransform *terraintrans = nullptr;

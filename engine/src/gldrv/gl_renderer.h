@@ -40,6 +40,7 @@
  */
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "gl_globals.h"
@@ -69,6 +70,17 @@ void PrepareDraw(Primitive primitive, bool color_array);
 
 /// Bind the VAO used for client-memory draws
 void BindStreamVertexArray();
+
+/**
+ * Compiles and links a program from complete GLSL sources (each starting
+ * with the profile's #version directive). It is not given the built-in
+ * fixed-function uniforms: the caller sets its own. Returns 0 on failure
+ * (the errors are logged).
+ */
+GLuint BuildProgram(const std::string &vertex_source, const std::string &fragment_source, const char *what);
+
+/// Binds a program for a draw made outside PrepareDraw, keeping the bound-program cache right
+void BindProgram(GLuint program);
 
 /**
  * Copies vertex data into the streaming vertex buffer (binding it to

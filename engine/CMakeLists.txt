@@ -361,6 +361,7 @@ SET(LIBGFXCLIENT_SOURCES
     src/gfx/gauge.cpp
     src/gfx/halo_system.cpp
     src/gfx/halo.cpp
+    src/gfx/planet_halo.cpp
     src/gfx/hud.cpp
     src/gfx/jpeg_memory.cpp
     src/gfx/loc_select.cpp
@@ -628,6 +629,7 @@ SET(VEGASTRIKE_SOURCES
     src/gldrv/gl_primitives.cpp
     src/gldrv/gl_renderer.cpp
     src/gldrv/gl_render_target.cpp
+    src/gldrv/gl_planet_halo.cpp
     src/gldrv/gl_shader_translate.cpp
     src/gldrv/gl_clip.cpp
     src/gldrv/gl_fog.cpp

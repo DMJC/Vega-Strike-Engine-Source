@@ -793,6 +793,47 @@ void BindStreamVertexArray() {
     (*glBindVertexArray_p)(g_stream_vao);
 }
 
+GLuint BuildProgram(const std::string &vertex_source, const std::string &fragment_source, const char *what) {
+    const std::string vs_what = std::string(what) + " vertex shader";
+    const std::string fs_what = std::string(what) + " fragment shader";
+    GLuint vs = CompileStage(GL_VERTEX_SHADER, vertex_source, vs_what.c_str());
+    GLuint fs = CompileStage(GL_FRAGMENT_SHADER, fragment_source, fs_what.c_str());
+    if (vs == 0 || fs == 0) {
+        if (vs != 0) {
+            (*glDeleteShader_p)(vs);
+        }
+        if (fs != 0) {
+            (*glDeleteShader_p)(fs);
+        }
+        return 0;
+    }
+    GLuint program = (*glCreateProgram_p)();
+    (*glAttachShader_p)(program, vs);
+    (*glAttachShader_p)(program, fs);
+    (*glLinkProgram_p)(program);
+    (*glDeleteShader_p)(vs);
+    (*glDeleteShader_p)(fs);
+    GLint ok = 0;
+    (*glGetProgramiv_p)(program, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[4096];
+        GLsizei len = 0;
+        (*glGetProgramInfoLog_p)(program, sizeof(log) - 1, &len, log);
+        log[len] = '\0';
+        VS_LOG(error, (boost::format("Failed to link the %1% program: %2%") % what % log));
+        (*glDeleteProgram_p)(program);
+        return 0;
+    }
+    return program;
+}
+
+void BindProgram(GLuint program) {
+    if (g_bound_program != program) {
+        (*glUseProgram_p)(program);
+        g_bound_program = program;
+    }
+}
+
 size_t StreamVertexData(const void *data, size_t bytes) {
     const size_t offset = g_stream_vertices.Write(data, bytes);
     GFXBindBuffer(g_stream_vertices.Buffer());

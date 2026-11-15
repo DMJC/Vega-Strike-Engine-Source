@@ -70,6 +70,7 @@
 #include "gfx_generic/lerp.h"
 #include "gfx/warptrail.h"
 #include "gfx/halo.h"
+#include "gfx/planet_halo.h"
 #include "gfx/background.h"
 #include "gfx/animation.h"
 #include "gfx/aux_texture.h"
@@ -412,6 +413,7 @@ void StarSystem::Draw(bool DrawCockpit) {
     const double b4_background_draw = realTime();
 #endif
     GFXDisable(LIGHTING);
+    PlanetHalos::BeginFrame();
     background->Draw();
 #if defined(LOG_TIME_TAKEN_DETAILS)
     const double after_background_draw = realTime();
@@ -486,6 +488,8 @@ void StarSystem::Draw(bool DrawCockpit) {
     Planet::ProcessTerrains();
     Terrain::RenderAll();
     Mesh::ProcessUndrawnMeshes(true);
+    // Halos of the near planets, against the near pass's depth
+    PlanetHalos::DrawNear();
 #if defined(LOG_TIME_TAKEN_DETAILS)
     process_mesh = realTime() - process_mesh;
     VS_LOG(trace, (boost::format("%1%: Time taken by mesh processing: %2%") % __FUNCTION__ % process_mesh));
