@@ -115,7 +115,8 @@ bool hasDockingUnits(const Unit *my_unit) {
 
 uint_fast32_t getPhysicsPriority(Unit *un) {
     const bool FORCE_TOP_PRIORITY = configuration().physics.priorities.force_top_priority;
-    if (FORCE_TOP_PRIORITY) {
+    // A cutscene actor gets a new scripted state every physics frame
+    if (FORCE_TOP_PRIORITY || un->cutscene_actor) {
         return 1;
     }
     //Some other comment mentions these need special treatment for subunit scheduling

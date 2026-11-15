@@ -190,6 +190,10 @@ voidWRAPPED1( SetAngularVelocity, Vector, v
 )
 voidWRAPPED1( SetInvulnerable, bool, invulnerable
 )
+voidWRAPPED1( SetCutsceneActor, bool, actor
+)
+voidWRAPPED3( SetCutsceneTarget, QVector, pos, Vector, q, Vector, r
+)
 WRAPPED0(bool, IsInvulnerable,
 false )
 #endif // (WHICH_UNIT_EXPORT_NUMBER == 1) || (WHICH_UNIT_EXPORT_NUMBER == 3)

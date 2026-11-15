@@ -71,6 +71,14 @@ public:
     // TODO: this should be deleted when we separate satelites from movables
     bool resolveforces;
 
+    //Cutscene actor: a script drives this unit by giving, before each physics
+    //step, the state it reaches at the end of that step (SetCutsceneTarget).
+    //Forces, velocity and angular velocity no longer move it, it steps every
+    //physics frame, and drawing interpolates between the states as usual.
+    bool cutscene_actor = false;
+    bool cutscene_target_set = false;
+    Transformation cutscene_target;
+
     //The number of frames ahead this was put in the simulation queue
     unsigned int sim_atom_multiplier;
     //The number of frames ahead this is predicted to be scheduled in the next scheduling round
@@ -203,6 +211,10 @@ public:
 
     //Sets if forces should resolve on this unit or not
     void SetResolveForces(bool);
+
+    void SetCutsceneActor(bool actor);
+    ///The position and orientation (up q, forward r) at the end of the next physics step
+    void SetCutsceneTarget(const QVector &pos, const Vector &q, const Vector &r);
 
     double GetMaxWarpFieldStrength(float rampmult = 1.f) const;
     void DecreaseWarpEnergy(bool insystem, float time = 1.0f);

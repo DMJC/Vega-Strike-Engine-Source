@@ -151,6 +151,24 @@ void Movable::SetResolveForces(bool ys) {
     resolveforces = ys;
 }
 
+void Movable::SetCutsceneActor(bool actor) {
+    cutscene_actor = actor;
+    cutscene_target_set = false;
+}
+
+void Movable::SetCutsceneTarget(const QVector &pos, const Vector &q, const Vector &r) {
+    Vector up = q;
+    Vector forward = r;
+    up.Normalize();
+    forward.Normalize();
+    Vector p;
+    CrossProduct(up, forward, p);
+    CrossProduct(forward, p, up);
+    cutscene_target.position = pos;
+    cutscene_target.orientation = Quaternion::from_vectors(p, up, forward);
+    cutscene_target_set = true;
+}
+
 void Movable::UpdatePhysics(const Transformation& trans,
                             const Matrix& transmat,
                             const Vector& cum_vel,
@@ -166,7 +184,13 @@ void Movable::UpdatePhysics(const Transformation& trans,
 
     UpdatePhysics3(trans, transmat, lastframe, uc, superunit);
 
-    if (resolveforces) {
+    if (cutscene_actor) {
+        // Scripted: go to the state given for the end of this step. Velocity
+        // is kept (engine effects and sound use it) but not integrated
+        if (cutscene_target_set) {
+            curr_physical_state = cutscene_target;
+        }
+    } else if (resolveforces) {
         //clamp velocity to the resource-backed speed limits
         ResolveForces(trans, transmat);
         // Enforce the flight computer's set speed on the RESULTING velocity
@@ -290,7 +314,9 @@ void Movable::AddVelocity(float difficulty) {
 
     graphicOptions.WarpFieldStrength =
             lastWarpField * configuration().warp.warp_memory_effect_flt + (1.0 - configuration().warp.warp_memory_effect_flt) * graphicOptions.WarpFieldStrength;
-    curr_physical_state.position = curr_physical_state.position + (v * simulation_atom_var * difficulty).Cast();
+    if (!cutscene_actor) {
+        curr_physical_state.position = curr_physical_state.position + (v * simulation_atom_var * difficulty).Cast();
+    }
     //now we do this later in update physics
     //I guess you have to, to be robust
 }
@@ -304,7 +330,7 @@ void Movable::UpdatePhysics2(const Transformation &trans,
         bool lastframe,
         UnitCollection *uc) {
     //Only in non-networking OR networking && is a player OR SERVER && not a player
-    if (AngularVelocity.i || AngularVelocity.j || AngularVelocity.k) {
+    if (!cutscene_actor && (AngularVelocity.i || AngularVelocity.j || AngularVelocity.k)) {
         Rotate(simulation_atom_var * (AngularVelocity));
     }
 
