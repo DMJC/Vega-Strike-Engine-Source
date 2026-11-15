@@ -307,6 +307,7 @@ public:
 
     bool RequestCinematicSkip() override;
     bool TakeCinematicSkip() override;
+    bool ControlsLocked() const override;
 
     ///GFXLoadMatrix proper camera
     void SetViewport() override {

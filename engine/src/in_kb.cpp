@@ -42,8 +42,29 @@ std::map<std::string, HandlerCall> keyBindings;
 std::map<std::string, unsigned int> playerBindings;
 KBSTATE mouseButtonState;
 
+static std::unordered_set<KBHandler> &ControlLockExempt() {
+    static std::unordered_set<KBHandler> exempt;
+    return exempt;
+}
+
+void SetControlLockExempt(KBHandler handler) {
+    ControlLockExempt().insert(handler);
+}
+
+bool PlayerControlsLocked() {
+    Cockpit *cockpit = _Universe ? _Universe->AccessCockpit() : nullptr;
+    return cockpit && cockpit->ControlsLocked();
+}
+
+bool ControlLockBlocks(KBHandler handler) {
+    return ControlLockExempt().count(handler) == 0 && PlayerControlsLocked();
+}
+
 static void kbGetInput(int key, int modifiers, bool pressed, int x, int y) {
     const std::string map_key = std::to_string(key) + "-" + std::to_string(modifiers);
+    if (pressed && ControlLockBlocks(keyBindings[map_key].function)) {
+        return;
+    }
 
     KBSTATE state = keyBindings[map_key].state;
     int i = _Universe->CurrentCockpit();
@@ -256,6 +277,16 @@ void RestoreKB() {
 
 
 void ProcessKB() {
+    // Release keys held when the controls lock, so they stop acting
+    if (PlayerControlsLocked()) {
+        for (auto &binding : keyBindings) {
+            HandlerCall &call = binding.second;
+            if ((call.state == DOWN || call.state == PRESS) && ControlLockBlocks(call.function)) {
+                call.function(call.data, RELEASE);
+                call.state = UP;
+            }
+        }
+    }
     for (const auto& binding : keyBindings) {
         HandlerCall handler = binding.second;
         const KBSTATE state = keyBindings[binding.first].state;

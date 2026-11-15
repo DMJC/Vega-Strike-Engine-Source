@@ -108,6 +108,12 @@ bool takeCinematicSkip() {
     return cockpit && cockpit->TakeCinematicSkip();
 }
 
+// True while the player's controls are locked out (autopilot view, cutscenes)
+bool playerControlsLocked() {
+    Cockpit *cockpit = cinematicCockpit();
+    return cockpit && cockpit->ControlsLocked();
+}
+
 // Docking cutscenes (see cmd/docking_cutscenes.h)
 void setDockingCutscenes(bool enabled) {
     DockingCutscenes::SetEnabled(enabled);
@@ -171,6 +177,7 @@ BOOST_PYTHON_MODULE(VS) {
     voidEXPORT_UTIL(clearCinematicCamera)
     EXPORT_UTIL(isCinematicCameraActive, false)
     EXPORT_UTIL(takeCinematicSkip, false)
+    EXPORT_UTIL(playerControlsLocked, false)
     voidEXPORT_UTIL(setDockingCutscenes)
     EXPORT_UTIL(getDockingCutscenes, false)
     EXPORT_UTIL(takePendingLanding, UnitWrapper())

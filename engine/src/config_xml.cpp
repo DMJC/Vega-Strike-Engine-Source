@@ -271,6 +271,14 @@ void GameVegaConfig::bindKeys() {
     // entries. Mirrors the startup reset (InitJoystick) plus the keyboard and
     // axis-array clearing.
     ClearKeyBindings();
+    // Still usable while the player's controls are locked out (autopilot view, cutscenes)
+    for (const char *name : {"Cockpit::Quit", "PauseKey", "ConfigKey", "Screenshot", "VolumeInc", "VolumeDec",
+            "MusicVolumeInc", "MusicVolumeDec", "Cockpit::SkipMusicTrack"}) {
+        auto exempt = cmd_map.find(name);
+        if (exempt != cmd_map.end()) {
+            SetControlLockExempt(exempt->second);
+        }
+    }
     for (int b = 0; b < NUMJBUTTONS; ++b)
         for (int j = 0; j < MAX_JOYSTICKS; ++j) UnbindJoyKey(j, b);
     for (int j = 0; j < MAX_JOYSTICKS; ++j)

@@ -29,6 +29,7 @@
 #include "src/in_joystick.h"
 #include "root_generic/vs_globals.h"
 #include "src/config_xml.h"
+#include "src/in_kb.h"
 #include "src/in_kb_data.h"
 #include "src/vs_logging.h"
 #include <assert.h>     /// needed for assert() calls.
@@ -182,6 +183,9 @@ void ProcessJoystick(int whichplayer) {
                             &JoystickState[DIGHATSWITCH][i][h * MAX_DIGITAL_VALUES + dir_index];
                     JSHandlerCall *handler =
                             &JoystickBindings[DIGHATSWITCH][i][h * MAX_DIGITAL_VALUES + dir_index];
+                    if (ControlLockBlocks(handler->function)) {
+                        press = false;
+                    }
                     if (press == true) {
                         if (*state == UP) {
                             (*handler->function)
@@ -201,7 +205,7 @@ void ProcessJoystick(int whichplayer) {
             for (int j = 0; j < NUMJBUTTONS; j++) {
                 KBSTATE *state = &JoystickState[JOYSTICK_SWITCH][i][j];
                 JSHandlerCall *handler = &JoystickBindings[JOYSTICK_SWITCH][i][j];
-                if ((buttons & (1LL << j))) {
+                if ((buttons & (1LL << j)) && !ControlLockBlocks(handler->function)) {
                     if (*state == UP) {
                         (*handler->function)
                                 (handler->data, PRESS);
@@ -233,7 +237,8 @@ void ProcessJoystick(int whichplayer) {
                         //this is set
                         JSHandlerCall *handler = &JoystickBindings[HATSWITCH][h][v];
                         KBSTATE *state = &JoystickState[HATSWITCH][h][v];
-                        if (hs_val - margin <= axevalue && axevalue <= hs_val + margin) {
+                        if (hs_val - margin <= axevalue && axevalue <= hs_val + margin
+                                && !ControlLockBlocks(handler->function)) {
                             //hatswitch pressed
                             if (*state == UP) {
                                 (*handler->function)(handler->data, PRESS);

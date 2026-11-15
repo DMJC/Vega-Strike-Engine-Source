@@ -84,6 +84,17 @@ unsigned int getModifier(const std::string modifier);
 int getModifier(bool alton, bool cntrlon, bool shifton);
 bool HandleGlobalKey(unsigned int ch, unsigned int mod, bool down, int x, int y);
 void ProcessKB();
+
+/**
+ * Player control lock-out (Cockpit::ControlsLocked): while it is on, key,
+ * joystick and mouse-button bindings do nothing (held ones are released)
+ * and the flight axes are ignored, except for the handlers marked exempt
+ * (quit, pause, config screen, screenshots, volume...).
+ */
+bool PlayerControlsLocked();
+void SetControlLockExempt(KBHandler handler);
+///True if the lock-out stops this handler now
+bool ControlLockBlocks(KBHandler handler);
 void BindKey(int key, unsigned int modifiers, unsigned int player, KBHandler handler, const KBData &data);
 void UnbindKey(int key, unsigned int modifiers);
 void ClearKeyBindings();

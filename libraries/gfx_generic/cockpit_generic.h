@@ -424,6 +424,12 @@ public:
         return false;
     }
 
+    ///True while the player's flight and weapon controls are locked out
+    ///(the autopilot's external view, or a cutscene)
+    virtual bool ControlsLocked() const {
+        return false;
+    }
+
     ///GFXLoadMatrix proper camera
     virtual void SetViewport() {
     }

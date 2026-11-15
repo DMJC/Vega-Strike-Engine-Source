@@ -2615,6 +2615,13 @@ bool GameCockpit::RequestCinematicSkip() {
     return true;
 }
 
+bool GameCockpit::ControlsLocked() const {
+    // The autopilot's run-up shows an external view of the ship; it is not
+    // shown (and nothing is locked) when graphics.pan_on_auto is off
+    const bool autopilot_view = autopilot_time > 0 && configuration().graphics.pan_on_auto;
+    return cinematic.active || autopilot_view;
+}
+
 bool GameCockpit::TakeCinematicSkip() {
     const bool requested = cinematic.skip_requested;
     cinematic.skip_requested = false;

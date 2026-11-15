@@ -34,6 +34,7 @@
 #include "root_generic/vs_globals.h"
 #include "src/config_xml.h"
 #include  "in_kb_data.h"
+#include "src/in_kb.h"
 
 FlyByJoystick::FlyByJoystick(unsigned int configfile) : FlyByKeyboard(configfile), keyboard(false) {
     for (int i = 0; i < MAX_JOYSTICKS; i++) {
@@ -57,7 +58,9 @@ void FlyByJoystick::Execute() {
     const float expamountc = configuration().joystick.nonlinear_expamount_combat_flt;
     const float pamountc = configuration().joystick.nonlinear_pamount_combat_flt;
     desired_ang_velocity = Vector(0, 0, 0);
-    for (unsigned int i = 0; i < this->whichjoystick.size(); i++) {
+    // Controls locked out (autopilot view, cutscene): hold course, ignore the axes
+    const bool locked = PlayerControlsLocked();
+    for (unsigned int i = 0; !locked && i < this->whichjoystick.size(); i++) {
         int which_joystick = this->whichjoystick[i];
         if (which_joystick < MAX_JOYSTICKS) {
             int joy_nr;
