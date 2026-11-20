@@ -25,6 +25,7 @@
  * along with Vega Strike.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -236,6 +237,19 @@ void drawBackgroundAroundText(ImDrawList* draw_list, ImU32 background_color,
 }
 
 
+
+float TextPlane::GetTextWidth(const std::string &text) {
+    float widest = 0.0f;
+    for (const TextLine &line : ParseText(text, color)) {
+        float width = 0.0f;
+        for (const TextSegment &segment : line.segments) {
+            width += ImGui::CalcTextSize(segment.text.c_str()).x;
+        }
+        widest = std::max(widest, width);
+    }
+    const float res_w = (m_resW > 0.0f && m_resH > 0.0f) ? m_resW : ImGui::GetIO().DisplaySize.x;
+    return res_w > 0.0f ? widest * 2.0f / res_w : 0.0f;
+}
 
 int TextPlane::Draw(const string &newText, int offset, bool start_lower, bool force_highquality, bool automatte) {
     // Anchor: when a per-text resolution is set, map normalized coords against it and

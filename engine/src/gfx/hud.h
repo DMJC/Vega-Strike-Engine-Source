@@ -120,6 +120,11 @@ public:
         return myText;
     }
 
+    // Width of the widest line of text as drawn, in normalized screen units
+    // (relative to the resolution set with setResolution, else the display),
+    // ignoring colour codes
+    float GetTextWidth(const std::string &text);
+
     // The resolution to lay out against (0 = use native resolution, the legacy
     // behaviour). Used by the base so text scales with the base art.
     void setResolution(float w, float h) {

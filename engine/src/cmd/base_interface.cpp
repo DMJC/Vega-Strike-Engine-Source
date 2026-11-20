@@ -1657,7 +1657,9 @@ void BaseInterface::Draw() {
     const float base_text_background_alpha = configuration().graphics.bases.text_background_alpha_flt;
 
     curtext.GetCharSize(x, y);
-    curtext.SetPos(-.99, -1 + (y * 1.5));
+    // Centred along the bottom of the base screen
+    const float curtext_width = curtext.GetTextWidth(curtext.GetText());
+    curtext.SetPos(std::max(-.99f, -curtext_width / 2.0f), -1 + (y * 1.5));
 
     if (curtext.GetText().find("XXX") != 0) {
         GFXColor tmpbg(curtext.background_color);
