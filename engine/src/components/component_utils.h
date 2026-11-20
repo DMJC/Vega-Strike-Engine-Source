@@ -59,6 +59,9 @@ void DoubleYawPitchRollParser(std::string unit_key, const YPR ypr,
                         Resource<double> &right_value, Resource<double> &left_value,
                         const double minimum_functionality = 0.0);
 
+// True if graphics.hud.not_included_in_damage_report names this entry
+bool IsHiddenInDamageReport(const std::string &component_name);
+
 /* This function is used by vdu.cpp to print the component
     with the color showing damage */
 std::string PrintFormattedComponentInHud(double percent, std::string component_name,

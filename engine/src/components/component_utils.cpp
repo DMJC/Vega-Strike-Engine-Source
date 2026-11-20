@@ -27,6 +27,8 @@
 
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <cctype>
+#include <sstream>
 #include <boost/format.hpp>
 
 #include "component_utils.h"
@@ -194,11 +196,40 @@ void ResourceYawPitchRollParser(std::string unit_key, const YPR ypr,
 }
 
 
+// Lower case with spaces and underscores removed, so "Fire Control",
+// "fire_control" and "Firecontrol" all compare equal
+static std::string NormalizeDamageReportName(const std::string &name) {
+    std::string result;
+    for (char c : name) {
+        if (c != ' ' && c != '_') {
+            result += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+    }
+    return result;
+}
+
+// graphics.hud.not_included_in_damage_report: space separated names of
+// entries to leave out of the damage report (use _ for spaces in a name)
+bool IsHiddenInDamageReport(const std::string &component_name) {
+    const std::string target = NormalizeDamageReportName(component_name);
+    std::istringstream names(configuration().graphics.hud.not_included_in_damage_report);
+    std::string name;
+    while (names >> name) {
+        if (NormalizeDamageReportName(name) == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* This function is used by vdu.cpp to print the component
     with the color showing damage */
 std::string PrintFormattedComponentInHud(double percent, std::string component_name,
                                          bool damageable,
                                          std::string GetDamageColor(double)) {
+    if (IsHiddenInDamageReport(component_name)) {
+        return std::string();
+    }
     const bool print_percent_working = configuration().graphics.hud.print_damage_percent;
 
     const std::string damage_color = GetDamageColor(percent);
