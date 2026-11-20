@@ -123,6 +123,12 @@ void Damageable::ApplyDamage(const Vector &pnt,
         return;
     }
 
+    // Planets (and jump points) can't be harmed by weapons: no damage, no
+    // shield flash and no faction anger. Shots still stop on hitting them.
+    if (unit->getUnitType() == Vega_UnitType::planet) {
+        return;
+    }
+
     // Stop processing for docked ships if no_dock_damage is set
     if (no_dock_damage && (unit->DockedOrDocking() & (unit->DOCKED_INSIDE | unit->DOCKED))) {
         return;
